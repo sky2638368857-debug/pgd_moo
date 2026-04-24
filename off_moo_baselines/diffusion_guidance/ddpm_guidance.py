@@ -20,6 +20,7 @@ from off_moo_baselines.diffusion_guidance.modules import (
     EMA,
     Model_unconditional,
     Preference_model,
+    Preference_model_1,
     save_model,
     load_model,
 )
@@ -196,6 +197,139 @@ def train_preference(
         logging.info(f"Epoch {epoch} loss: {np.mean(loss_epoch)}")
     return model
 
+def train_preference_1(
+    dataloader,
+    model=None,
+    diffusion=None,
+    val_loader=None,
+    config=None,
+    tolerance=50,
+    model_save_path=None,
+    three_dim_out=False,
+    w_dim = None,
+):
+    """
+    Train a preference model for guided diffusion sampling.
+
+    This function trains a model to predict preferences between pairs of solutions.
+    The model learns to rank solutions based on their quality, which is then used
+    for guided sampling in the diffusion process.
+
+    Args:
+        dataloader: DataLoader providing (x_1, x_2, y) batches where y indicates preference
+        model: Pre-trained preference model (if None, creates new Preference_model)
+        diffusion: Diffusion process (if None, creates new Diffusion)
+        val_loader: Validation dataloader for early stopping
+        config: Configuration dictionary
+        tolerance (int): Number of epochs without improvement before early stopping
+        model_save_path (str): Path to save the best model
+        three_dim_out (bool): Whether model outputs 3D tensor
+
+    Returns:
+        tuple: (trained_model, diffusion)
+    """
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
+    if model is None:
+        model = Preference_model_1(
+            input_dim=dataloader.dataset[0][0].shape[-1],
+            device=device,
+            three_dim_out=three_dim_out,
+            w_dim=w_dim,
+        ).to(device)
+    if diffusion is None:
+        diffusion = Diffusion(
+            img_size=dataloader.dataset[0][0].shape[-1], device=device
+        ).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=1e-5)
+    best_val_loss = 1e10
+    curr_tol = 0
+    for epoch in range(2000):
+        loss_epoch = []
+        logging.info(f"Starting epoch {epoch}:")
+        pbar = tqdm(dataloader)
+        for i, (x_1, x_2, y_1, y_2, ind) in enumerate(pbar):
+            x_1 = x_1.to(device)
+            x_2 = x_2.to(device)
+            y_1 = y_1.to(device)
+            y_2 = y_2.to(device)
+            ind = ind.to(device)
+
+            dist = torch.distributions.Dirichlet(torch.ones(model.w_dim))
+            w = dist.sample((y_1.shape[0],)).to(device) 
+
+            ind = ind.to(device).long()
+            mask = (ind == 2)
+            if mask.any():
+                s1 = (y_1 * w).sum(dim=1)
+                s2 = (y_2 * w).sum(dim=1)
+
+                new_ind = (s1 > s2).long().unsqueeze(1)
+
+                ind = ind.clone()
+                ind[mask] = new_ind[mask]
+
+            x_1 = x_1 * 2 - 1
+            x_2 = x_2 * 2 - 1
+            t = diffusion.sample_timesteps(x_1.shape[0]).to(device)
+            x_1, _ = diffusion.noise_images(x_1, t)
+            x_2, _ = diffusion.noise_images(x_2, t)
+            pred = model(x_1, x_2, t, w)
+            loss_1 = loss_fn(pred, ind.squeeze().long())
+            loss = torch.mean(loss_1)
+            loss.backward()
+            optimizer.step()
+            pbar.set_postfix(MSE=loss.item())
+            loss_epoch.append(loss.item())
+
+        if val_loader is not None:
+            model.eval()
+            if epoch % 5 == 0:
+                val_loss = []
+                for epoch in range(5):
+                    for i, (x_1, x_2, y_1, y_2, ind) in enumerate(val_loader):
+                        x_1 = x_1.to(device)
+                        x_2 = x_2.to(device)
+                        y_1 = y_1.to(device)
+                        y_2 = y_2.to(device)
+                        ind = ind.to(device)
+
+                        dist = torch.distributions.Dirichlet(torch.ones(model.w_dim))
+                        w = dist.sample((y_1.shape[0],)).to(device) 
+
+                        ind = ind.to(device).long()
+                        mask = (ind == 2)
+                        if mask.any():
+                            s1 = (y_1 * w).sum(dim=1)
+                            s2 = (y_2 * w).sum(dim=1)
+
+                            new_ind = (s1 > s2).long().unsqueeze(1)
+
+                            ind = ind.clone()
+                            ind[mask] = new_ind[mask]
+                        x_1 = x_1 * 2 - 1
+                        x_2 = x_2 * 2 - 1
+                        t = diffusion.sample_timesteps(x_1.shape[0]).to(device)
+                        x_1, _ = diffusion.noise_images(x_1, t)
+                        x_2, _ = diffusion.noise_images(x_2, t)
+                        pred = model(x_1, x_2, t, w)
+                        loss_1 = loss_fn(pred, ind.squeeze().long())
+                        loss = torch.mean(loss_1)
+                        val_loss.append(loss.item())
+                model.train()
+                logging.info(
+                    f"Epoch {epoch} loss: {np.mean(loss_epoch)} val_loss: {np.mean(val_loss)}"
+                )
+                if np.mean(val_loss) < best_val_loss:
+                    best_val_loss = np.mean(val_loss)
+                    save_model(model, model_save_path, device)
+                    curr_tol = 0
+                else:
+                    curr_tol += 1
+                    if curr_tol > tolerance:
+                        break
+        logging.info(f"Epoch {epoch} loss: {np.mean(loss_epoch)}")
+    return model
 
 # =============================================================================
 # Diffusion Process
@@ -362,6 +496,127 @@ class Diffusion:
                 x_ = x_.detach().requires_grad_(True)
                 score = vmap(grad(compute_grad), (0, 0, 0, None, None, None))(
                     x_, best_x_data, t, preference_model, params, buffers
+                )
+                best_x_data = x_.detach()
+                score = score.detach()
+            else:
+                score = 0
+            alpha = self.alpha[t][:, None]
+            alpha_hat = self.alpha_hat[t][:, None]
+            alpha_hat_t_1 = self.alpha_hat[t - 1][:, None]
+            beta = self.beta[t][:, None]
+            if i > 1 and not ddim:
+                noise = torch.randn_like(x)
+            else:
+                noise = torch.zeros_like(x)
+            if ddim:
+                x = (
+                    (torch.sqrt(alpha_hat_t_1) / torch.sqrt(alpha_hat))
+                    * (x - (torch.sqrt(1 - alpha_hat) * predicted_noise))
+                ) + torch.sqrt(1 - alpha_hat_t_1) * cfg_scale * score
+            else:
+                x = (
+                    1
+                    / torch.sqrt(alpha)
+                    * (
+                        x
+                        - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise
+                    )
+                    + torch.sqrt(beta) * noise
+                    + cfg_scale * score * beta
+                )
+            if i % 100 == 0:
+                x = x.clamp(-1, 1)
+        model.train()
+        x = (x.clamp(-1, 1) + 1) / 2
+        latents = [(latent.clamp(-1, 1) + 1) / 2 for latent in latents]
+        latents.append(x)
+        if return_latents:
+            return x, torch.stack(latents)
+        # x = (x * 255).type(torch.uint8)
+        return x
+
+    def sample_with_preference_1(
+        self,
+        model,
+        n,
+        preference_model,
+        best_x_data,
+        cfg_scale=3,
+        return_latents=False,
+        ddim=False,
+        w = None,
+    ):
+        """
+        Sample new images using preference-guided diffusion.
+
+        This method performs reverse diffusion sampling with preference guidance.
+        It uses a preference model to guide the sampling process towards solutions
+        that are close to the pareto front.
+
+        Args:
+            model: Trained diffusion model for noise prediction
+            n (int): Number of samples to generate
+            preference_model: Trained preference model for guidance
+            best_x_data (torch.Tensor): Best known solutions for comparison
+            cfg_scale (float): Scale factor for preference guidance (default: 3)
+            return_latents (bool): Whether to return intermediate latents (default: False)
+            ddim (bool): Whether to use DDIM sampling (default: False)
+
+        Returns:
+            torch.Tensor: Generated samples of shape (n, img_size)
+        """
+
+        def compute_grad(x, best_x_data, t, preference_model, params, buffers):
+            """
+            Compute preference gradient for guided sampling.
+
+            Args:
+                x: Current sample
+                best_x_data: Best known solutions in the training set
+                t: Current timestep
+                preference_model: Preference model
+                params: Model parameters
+                buffers: Model buffers
+
+            Returns:
+                torch.Tensor: Preference gradient
+            """
+            x = x.unsqueeze(0)
+            best_x_data = best_x_data.unsqueeze(0)
+            w = w.unsqueeze(0)
+            
+            predictions = functional_call(
+                preference_model, (params, buffers), (x, best_x_data, t, w)
+            )
+            pref_logits = torch.nn.functional.log_softmax(predictions, dim=-1)
+            pref_logits = pref_logits[..., 0].squeeze()
+            return pref_logits
+
+        params = {k: v.detach() for k, v in preference_model.named_parameters()}
+        buffers = {k: v.detach() for k, v in preference_model.named_buffers()}
+        logging.info(f"Sampling {n} new images....")
+        model.eval()
+        preference_model.eval()
+        latents = []
+
+        x = torch.randn((n, self.img_size)).to(self.device)
+        best_x_data = best_x_data.to(x.dtype).to(self.device)
+        best_x_data = 2 * best_x_data - 1
+        for i in tqdm(reversed(range(1, self.noise_steps)), position=0):
+            if i % 10 == 0 and return_latents:
+                latents.append(x)
+            t = (torch.ones(n) * i).long().to(self.device)
+            with torch.no_grad():
+                predicted_noise = model(x, t)
+            if cfg_scale > 0:
+                x_ = x.clone()
+                x_ = x_.detach().requires_grad_(True)
+                score = vmap(
+                    grad(compute_grad),
+                    (0, 0, 0, None, None, None, 0)   # ⭐ w 也是 batch 维
+                )(
+                    x_, best_x_data, t, preference_model, params, buffers, w
                 )
                 best_x_data = x_.detach()
                 score = score.detach()

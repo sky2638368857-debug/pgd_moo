@@ -23,19 +23,26 @@ from off_moo_baselines.diffusion_guidance.ddpm_guidance import (
     train,
     Diffusion,
     train_preference,
+    train_preference_1,
 )
 from off_moo_baselines.diffusion_guidance.modules import (
     Preference_model,
+    Preference_model_1,
     Model_unconditional,
     save_model,
     load_model,
 )
-from off_moo_baselines.data import tkwargs, get_dataloader, get_preference_rankings
+from off_moo_baselines.data import tkwargs, get_dataloader, get_dataloader_1,get_preference_rankings
 from off_moo_bench.task_set import *
 from off_moo_bench.evaluation.metrics import hv
 
 
 def run(config: dict):
+
+    # versions : V_0(original_edition)、 V_1(单引导、添加权重排序规则)、 V_2(双引导,增加偏好权重引导模块)
+    versions = "V_1"
+
+
     if config["task"] in ALLTASKSDICT.keys():
         config["task"] = ALLTASKSDICT[config["task"]]
     results_dir = os.path.join(
@@ -47,7 +54,7 @@ def run(config: dict):
     ts_name = f"-ts-{ts.year}-{ts.month}-{ts.day}_{ts.hour}-{ts.minute}-{ts.second}"
     run_name = f"{config['model']}-{config['train_mode']}-seed{config['seed']}-{config['task']}"
 
-    logging_dir = os.path.join(config["results_dir"], run_name + ts_name)
+    logging_dir = os.path.join(config["results_dir"], run_name + ts_name + versions)
     os.makedirs(logging_dir, exist_ok=True)
 
     if config["use_wandb"]:
@@ -121,24 +128,51 @@ def run(config: dict):
         model_save_dir,
         f"{config['model']}-{config['train_mode']}-{config['task']}-{config['seed']}-0.pt",
     )
-    preference_save_path = model_save_path.replace("-0.pt", "-preference.pt")
 
-    (train_loader_pref, val_loader_pref, _, train_loader, _, _) = get_dataloader(
-        X,
-        y,
-        X_test,
-        y_test,
-        X_pref=X_pref if config["subsample"] else None,
-        y_pref=y_pref if config["subsample"] else None,
-        val_ratio=0.9,
-        batch_size=config["batch_size"],
-        preference_loader=True,
-        hypervolumes=hypervolumes,
-        three_dim_out=config["three_dim_out"],
-        use_diversity_metric=config["use_diversity_metric"],
-        pareto_rankings=ind_pareto_rank,
-        diversity_score_threshold=config["diversity_score_threshold"],
-    )
+
+    
+    if versions == "V_0":
+        preference_save_path = model_save_path.replace("-0.pt", "-preference.pt")
+
+    elif versions == "V_1":
+        preference_save_path = model_save_path.replace("-0.pt", "-preference_1.pt")
+
+        
+    if versions == "V_0":
+        (train_loader_pref, val_loader_pref, _, train_loader, _, _) = get_dataloader(
+            X,
+            y,
+            X_test,
+            y_test,
+            X_pref=X_pref if config["subsample"] else None,
+            y_pref=y_pref if config["subsample"] else None,
+            val_ratio=0.9,
+            batch_size=config["batch_size"],
+            preference_loader=True,
+            hypervolumes=hypervolumes,
+            three_dim_out=config["three_dim_out"],
+            use_diversity_metric=config["use_diversity_metric"],
+            pareto_rankings=ind_pareto_rank,
+            diversity_score_threshold=config["diversity_score_threshold"],
+        )
+    elif versions == "V_1":
+        (train_loader_pref, val_loader_pref, _, train_loader, _, _) = get_dataloader_1(
+            X,
+            y,
+            X_test,
+            y_test,
+            X_pref=X_pref if config["subsample"] else None,
+            y_pref=y_pref if config["subsample"] else None,
+            val_ratio=0.9,
+            batch_size=config["batch_size"],
+            preference_loader=True,
+            hypervolumes=hypervolumes,
+            three_dim_out=config["three_dim_out"],
+            use_diversity_metric=config["use_diversity_metric"],
+            pareto_rankings=ind_pareto_rank,
+            diversity_score_threshold=config["diversity_score_threshold"],
+        )
+
     if os.path.exists(model_save_path):
         model_uncond = Model_unconditional(dim=n_dim)
         load_model(model_uncond, model_save_path, device=tkwargs["device"])
@@ -149,23 +183,43 @@ def run(config: dict):
             model=model_uncond, save_path=model_save_path, device=model_uncond.device
         )
 
-    if os.path.exists(preference_save_path):
-        preference_model = Preference_model(
-            input_dim=train_loader.dataset[0][0].shape[-1],
-            device=tkwargs["device"],
-            three_dim_out=config["three_dim_out"],
-        ).to(tkwargs["device"])
-        load_model(preference_model, preference_save_path, device=tkwargs["device"])
-    else:
-        preference_model = train_preference(
-            dataloader=train_loader_pref,
-            diffusion=diffusion,
-            val_loader=val_loader_pref,
-            config=config,
-            model_save_path=preference_save_path,
-            three_dim_out=config["three_dim_out"],
-        )
-
+    if versions == "V_0":
+        if os.path.exists(preference_save_path):
+            preference_model = Preference_model(
+                input_dim=train_loader.dataset[0][0].shape[-1],
+                device=tkwargs["device"],
+                three_dim_out=config["three_dim_out"],
+            ).to(tkwargs["device"])
+            load_model(preference_model, preference_save_path, device=tkwargs["device"])
+        else:
+            preference_model = train_preference(
+                dataloader=train_loader_pref,
+                diffusion=diffusion,
+                val_loader=val_loader_pref,
+                config=config,
+                model_save_path=preference_save_path,
+                three_dim_out=config["three_dim_out"],
+            )
+    elif versions == "V_1":
+        if os.path.exists(preference_save_path):
+            preference_model = Preference_model_1(
+                input_dim=train_loader.dataset[0][0].shape[-1],
+                device=tkwargs["device"],
+                three_dim_out=config["three_dim_out"],
+                w_dim = n_obj,
+            ).to(tkwargs["device"])
+            load_model(preference_model, preference_save_path, device=tkwargs["device"])
+        else:
+            preference_model = train_preference_1(
+                dataloader=train_loader_pref,
+                diffusion=diffusion,
+                val_loader=val_loader_pref,
+                config=config,
+                model_save_path=preference_save_path,
+                three_dim_out=config["three_dim_out"],
+                w_dim = n_obj,
+            )
+    
     X_d_best, d_best = task.get_N_non_dominated_solutions(
         N=256, return_x=True, return_y=True
     )
@@ -174,24 +228,48 @@ def run(config: dict):
     except NotImplementedError:
         res_y_pf_ideal = None
     X_d_best = torch.tensor(X_d_best[-1]).unsqueeze(0).repeat(256, 1)
-    samples = diffusion.sample_with_preference(
-        model_uncond,
-        256,
-        preference_model,
-        torch.tensor(X_d_best),
-        cfg_scale=10.0,
-        return_latents=False,
-        ddim=False,
-    )
-    samples_20 = diffusion.sample_with_preference(
-        model_uncond,
-        256,
-        preference_model,
-        torch.tensor(X_d_best),
-        cfg_scale=20.0,
-        return_latents=False,
-        ddim=False,
-    )
+    if versions == "V_0":
+        samples = diffusion.sample_with_preference(
+            model_uncond,
+            256,
+            preference_model,
+            torch.tensor(X_d_best),
+            cfg_scale=10.0,
+            return_latents=False,
+            ddim=False,
+        )
+        samples_20 = diffusion.sample_with_preference(
+            model_uncond,
+            256,
+            preference_model,
+            torch.tensor(X_d_best),
+            cfg_scale=20.0,
+            return_latents=False,
+            ddim=False,
+        )
+    elif versions == "V_1":
+        w = torch.rand(n_obj)
+        print(f"Randomly initialized preference weight w: {w}")
+        samples = diffusion.sample_with_preference_1(
+            model_uncond,
+            256,
+            preference_model,
+            torch.tensor(X_d_best),
+            cfg_scale=10.0,
+            return_latents=False,
+            ddim=False,
+            w = w,
+        )
+        samples_20 = diffusion.sample_with_preference_1(
+            model_uncond,
+            256,
+            preference_model,
+            torch.tensor(X_d_best),
+            cfg_scale=20.0,
+            return_latents=False,
+            ddim=False,
+            w = w,
+        )
     if config["normalize_xs"]:
         task.map_denormalize_x()
         samples = task.denormalize_x(samples.cpu().numpy())
@@ -295,7 +373,6 @@ def run(config: dict):
     df = pd.DataFrame([hv_results])
     filename = os.path.join(logging_dir, "hv_results.csv")
     df.to_csv(filename, index=False)
-
 
 if __name__ == "__main__":
     from utils import process_args

@@ -656,7 +656,8 @@ class DatasetBuilder(abc.ABC):
             self.update_y_statistics()
     
     def regain_fronts(self, y):
-        return NonDominatedSorting().do(y)
+        # return NonDominatedSorting().do(y)
+        return NonDominatedSorting(method="efficient_non_dominated_sort").do(y)
     
     def get_N_non_dominated_solutions(
         self, N: int,

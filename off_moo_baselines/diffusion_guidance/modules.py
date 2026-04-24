@@ -296,6 +296,119 @@ class Preference_model(nn.Module):
         output = output.squeeze(-1)
         return output
 
+class Preference_model_1(nn.Module):
+    def __init__(
+        self,
+        input_dim=256,
+        w_dim=1,                     # 新增
+        device="cuda",
+        save_path=None,
+        three_dim_out=False,
+    ):
+        super().__init__()
+        self.device = device
+        self.input_dim = input_dim
+        self.w_dim = w_dim
+        self.save_path = save_path
+        self.three_dim_out = three_dim_out
+
+        # ===== 原有 backbone =====
+        self.mlp = nn.Sequential(
+            nn.Linear(input_dim, input_dim),
+            nn.ReLU(),
+            nn.LayerNorm(input_dim),
+            nn.Linear(input_dim, input_dim),
+            nn.ReLU(),
+            nn.LayerNorm(input_dim),
+        )
+
+        self.time_embed = nn.Sequential(
+            nn.Linear(input_dim, input_dim),
+            nn.ReLU(),
+            nn.LayerNorm(input_dim),
+        )
+
+        # ===== 新增：FiLM for w =====
+        self.w_embed = nn.Sequential(
+            nn.Linear(w_dim, input_dim),
+            nn.ReLU(),
+            nn.Linear(input_dim, input_dim * 2),
+        )
+
+        self.preference = nn.Sequential(
+            nn.Linear(input_dim, 512),
+            nn.ReLU(),
+            nn.LayerNorm(512),
+            nn.Linear(512, 512),
+            nn.ReLU(),
+            nn.LayerNorm(512),
+        )
+
+        self.out_1 = nn.Linear(512, 1)
+
+        if self.three_dim_out:
+            self.out_2 = nn.Linear(512, 1)
+
+    def pos_encoding(self, t, dim):
+        half_dim = dim // 2
+        freq = torch.exp(
+            math.log(10000)
+            * (torch.arange(0, half_dim, device=self.device).float() / half_dim)
+        ).to(self.device)
+
+        pos_enc_a = torch.sin(t.repeat(1, half_dim) * freq.unsqueeze(0))
+        pos_enc_b = torch.cos(t.repeat(1, half_dim) * freq.unsqueeze(0))
+        pos_enc = torch.cat([pos_enc_a, pos_enc_b], dim=-1)
+
+        if dim % 2 == 1:
+            pos_enc = torch.cat(
+                [pos_enc, torch.zeros_like(pos_enc[:, :1])], dim=-1
+            )
+        return pos_enc
+
+    def forward(self, x_1, x_2, t, w):
+        """
+        x_1, x_2: (B, D)
+        t: (B,)
+        w: (B, w_dim)
+        """
+
+        # ===== 1. 时间处理（完全保留你的逻辑）=====
+        t = t.unsqueeze(-1).float()  # (B, 1)
+
+        em = torch.stack([x_1, x_2], dim=1)  # (B, 2, D)
+
+        t_emb = self.time_embed(
+            self.pos_encoding(t, self.input_dim)
+        ).unsqueeze(-2)  # (B, 1, D)
+
+        # ===== 2. 先加时间 =====
+        h = self.mlp(em + t_emb)  # (B, 2, D)
+
+        # ===== 3. FiLM(w) =====
+        w = w.float()  # (B, w_dim)
+
+        gamma_beta = self.w_embed(w)  # (B, 2D)
+        gamma, beta = gamma_beta.chunk(2, dim=-1)
+
+        # —— 稳定技巧（非常重要）
+        gamma = 1.0 + 0.1 * gamma
+
+        gamma = gamma.unsqueeze(1)  # (B, 1, D)
+        beta = beta.unsqueeze(1)
+
+        h = gamma * h + beta  # FiLM 调制
+
+        # ===== 4. 后续保持一致 =====
+        output = self.out_1(self.preference(h + t_emb))
+
+        if self.three_dim_out:
+            output_2 = self.out_2(self.preference(h + t_emb)).sum(-2, keepdim=True)
+            output = torch.cat([output, output_2], dim=-2)
+
+        output = output.squeeze(-1)
+
+        return output
 
 # =============================================================================
 # Model Utility Functions
