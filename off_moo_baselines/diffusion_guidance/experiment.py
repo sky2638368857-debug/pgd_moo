@@ -24,15 +24,17 @@ from off_moo_baselines.diffusion_guidance.ddpm_guidance import (
     Diffusion,
     train_preference,
     train_preference_1,
+    train_preference_2,
 )
 from off_moo_baselines.diffusion_guidance.modules import (
     Preference_model,
     Preference_model_1,
+    Preference_model_2,
     Model_unconditional,
     save_model,
     load_model,
 )
-from off_moo_baselines.data import tkwargs, get_dataloader, get_dataloader_1,get_preference_rankings
+from off_moo_baselines.data import tkwargs, get_dataloader, get_dataloader_1, get_preference_rankings
 from off_moo_bench.task_set import *
 from off_moo_bench.evaluation.metrics import hv
 
@@ -137,6 +139,12 @@ def run(config: dict):
     elif versions == "V_1":
         preference_save_path = model_save_path.replace("-0.pt", "-preference_1.pt")
 
+    elif versions == "V_2":
+        preference_save_path = model_save_path.replace("-0.pt", "-preference_2_1.pt")
+        preference_save_path_2 = model_save_path.replace("-0.pt", "-preference_2_2.pt")
+
+
+
         
     if versions == "V_0":
         (train_loader_pref, val_loader_pref, _, train_loader, _, _) = get_dataloader(
@@ -157,6 +165,40 @@ def run(config: dict):
         )
     elif versions == "V_1":
         (train_loader_pref, val_loader_pref, _, train_loader, _, _) = get_dataloader_1(
+            X,
+            y,
+            X_test,
+            y_test,
+            X_pref=X_pref if config["subsample"] else None,
+            y_pref=y_pref if config["subsample"] else None,
+            val_ratio=0.9,
+            batch_size=config["batch_size"],
+            preference_loader=True,
+            hypervolumes=hypervolumes,
+            three_dim_out=config["three_dim_out"],
+            use_diversity_metric=config["use_diversity_metric"],
+            pareto_rankings=ind_pareto_rank,
+            diversity_score_threshold=config["diversity_score_threshold"],
+        )
+    elif versions == "V_2":
+        (train_loader_pref, val_loader_pref, _, train_loader, _, _) = get_dataloader(
+            X,
+            y,
+            X_test,
+            y_test,
+            X_pref=X_pref if config["subsample"] else None,
+            y_pref=y_pref if config["subsample"] else None,
+            val_ratio=0.9,
+            batch_size=config["batch_size"],
+            preference_loader=True,
+            hypervolumes=hypervolumes,
+            three_dim_out=config["three_dim_out"],
+            use_diversity_metric=config["use_diversity_metric"],
+            pareto_rankings=ind_pareto_rank,
+            diversity_score_threshold=config["diversity_score_threshold"],
+        )
+
+        (train_loader_pref_p2, val_loader_pref_p2, _, train_loader, _, _) = get_dataloader_1(
             X,
             y,
             X_test,
@@ -219,7 +261,43 @@ def run(config: dict):
                 three_dim_out=config["three_dim_out"],
                 w_dim = n_obj,
             )
-    
+    elif versions == "V_2":
+        if os.path.exists(preference_save_path):
+            preference_model = Preference_model(
+                input_dim=train_loader.dataset[0][0].shape[-1],
+                device=tkwargs["device"],
+                three_dim_out=config["three_dim_out"],
+            ).to(tkwargs["device"])
+            load_model(preference_model, preference_save_path, device=tkwargs["device"])
+        else:
+            preference_model = train_preference(
+                dataloader=train_loader_pref,
+                diffusion=diffusion,
+                val_loader=val_loader_pref,
+                config=config,
+                model_save_path=preference_save_path,
+                three_dim_out=config["three_dim_out"],
+            )
+
+        if os.path.exists(preference_save_path_2):
+            preference_model = Preference_model_2(
+                input_dim=train_loader.dataset[0][0].shape[-1],
+                device=tkwargs["device"],
+                three_dim_out=config["three_dim_out"],
+                w_dim = n_obj,
+            ).to(tkwargs["device"])
+            load_model(preference_model, preference_save_path, device=tkwargs["device"])
+        else:
+            Preference_model_2 = train_preference_2(
+                dataloader=train_loader_pref,
+                diffusion=diffusion,
+                val_loader=val_loader_pref,
+                config=config,
+                model_save_path=preference_save_path,
+                three_dim_out=config["three_dim_out"],
+                w_dim = n_obj,
+            )
+
     X_d_best, d_best = task.get_N_non_dominated_solutions(
         N=256, return_x=True, return_y=True
     )
@@ -264,6 +342,31 @@ def run(config: dict):
             model_uncond,
             256,
             preference_model,
+            torch.tensor(X_d_best),
+            cfg_scale=20.0,
+            return_latents=False,
+            ddim=False,
+            w = w,
+        )
+    elif versions == "V_2":
+        w = torch.rand(n_obj)
+        print(f"Randomly initialized preference weight w: {w}")
+        samples = diffusion.sample_with_preference_2(
+            model_uncond,
+            256,
+            preference_model,
+            Preference_model_2,
+            torch.tensor(X_d_best),
+            cfg_scale=10.0,
+            return_latents=False,
+            ddim=False,
+            w = w,
+        )
+        samples_20 = diffusion.sample_with_preference_2(
+            model_uncond,
+            256,
+            preference_model,
+            Preference_model_2,
             torch.tensor(X_d_best),
             cfg_scale=20.0,
             return_latents=False,

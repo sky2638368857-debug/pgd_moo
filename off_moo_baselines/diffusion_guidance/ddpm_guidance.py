@@ -614,7 +614,7 @@ class Diffusion:
                 x_ = x_.detach().requires_grad_(True)
                 score = vmap(
                     grad(compute_grad),
-                    (0, 0, 0, None, None, None, 0)   # ⭐ w 也是 batch 维
+                    (0, 0, 0, None, None, None, None)  
                 )(
                     x_, best_x_data, t, preference_model, params, buffers, w
                 )
@@ -656,3 +656,156 @@ class Diffusion:
             return x, torch.stack(latents)
         # x = (x * 255).type(torch.uint8)
         return x
+
+    def sample_with_preference_2(
+        self,
+        model,
+        n,
+        preference_model,
+        preference_model_2,
+        best_x_data,
+        cfg_scale=3,
+        return_latents=False,
+        ddim=False,
+        w = None,
+    ):
+        """
+        Sample new images using preference-guided diffusion.
+
+        This method performs reverse diffusion sampling with preference guidance.
+        It uses a preference model to guide the sampling process towards solutions
+        that are close to the pareto front.
+
+        Args:
+            model: Trained diffusion model for noise prediction
+            n (int): Number of samples to generate
+            preference_model: Trained preference model for guidance
+            best_x_data (torch.Tensor): Best known solutions for comparison
+            cfg_scale (float): Scale factor for preference guidance (default: 3)
+            return_latents (bool): Whether to return intermediate latents (default: False)
+            ddim (bool): Whether to use DDIM sampling (default: False)
+
+        Returns:
+            torch.Tensor: Generated samples of shape (n, img_size)
+        """
+
+        def compute_grad(x, best_x_data, t, preference_model, params, buffers):
+            """
+            Compute preference gradient for guided sampling.
+
+            Args:
+                x: Current sample
+                best_x_data: Best known solutions in the training set
+                t: Current timestep
+                preference_model: Preference model
+                params: Model parameters
+                buffers: Model buffers
+
+            Returns:
+                torch.Tensor: Preference gradient
+            """
+            x = x.unsqueeze(0)
+            best_x_data = best_x_data.unsqueeze(0)
+            predictions = functional_call(
+                preference_model, (params, buffers), (x, best_x_data, t)
+            )
+            pref_logits = torch.nn.functional.log_softmax(predictions, dim=-1)
+            pref_logits = pref_logits[..., 0].squeeze()
+            return pref_logits
+        
+        def compute_grad_2(x, best_x_data, t, preference_model, params, buffers):
+            """
+            Compute preference gradient for guided sampling.
+
+            Args:
+                x: Current sample
+                best_x_data: Best known solutions in the training set
+                t: Current timestep
+                preference_model: Preference model
+                params: Model parameters
+                buffers: Model buffers
+
+            Returns:
+                torch.Tensor: Preference gradient
+            """
+            x = x.unsqueeze(0)
+            best_x_data = best_x_data.unsqueeze(0)
+            w = w.unsqueeze(0)
+            
+            predictions = functional_call(
+                preference_model, (params, buffers), (x, best_x_data, t, w)
+            )
+            pref_logits = torch.nn.functional.log_softmax(predictions, dim=-1)
+            pref_logits = pref_logits[..., 0].squeeze()
+            return pref_logits
+        
+        params = {k: v.detach() for k, v in preference_model.named_parameters()}
+        buffers = {k: v.detach() for k, v in preference_model.named_buffers()}
+
+        params_2 = {k: v.detach() for k, v in preference_model_2.named_parameters()}
+        buffers_2 = {k: v.detach() for k, v in preference_model_2.named_buffers()}
+
+        logging.info(f"Sampling {n} new images....")
+        model.eval()
+        preference_model.eval()
+        preference_model_2.eval()
+
+        latents = []
+
+        x = torch.randn((n, self.img_size)).to(self.device)
+        best_x_data = best_x_data.to(x.dtype).to(self.device)
+        best_x_data = 2 * best_x_data - 1
+        for i in tqdm(reversed(range(1, self.noise_steps)), position=0):
+            if i % 10 == 0 and return_latents:
+                latents.append(x)
+            t = (torch.ones(n) * i).long().to(self.device)
+            with torch.no_grad():
+                predicted_noise = model(x, t)
+            if cfg_scale > 0:
+                x_ = x.clone()
+                x_ = x_.detach().requires_grad_(True)
+                score = vmap(
+                    grad(compute_grad),
+                    (0, 0, 0, None, None, None, None)  
+                )(
+                    x_, best_x_data, t, preference_model, params, buffers, w
+                )
+                best_x_data = x_.detach()
+                score = score.detach()
+            else:
+                score = 0
+            alpha = self.alpha[t][:, None]
+            alpha_hat = self.alpha_hat[t][:, None]
+            alpha_hat_t_1 = self.alpha_hat[t - 1][:, None]
+            beta = self.beta[t][:, None]
+            if i > 1 and not ddim:
+                noise = torch.randn_like(x)
+            else:
+                noise = torch.zeros_like(x)
+            if ddim:
+                x = (
+                    (torch.sqrt(alpha_hat_t_1) / torch.sqrt(alpha_hat))
+                    * (x - (torch.sqrt(1 - alpha_hat) * predicted_noise))
+                ) + torch.sqrt(1 - alpha_hat_t_1) * cfg_scale * score
+            else:
+                x = (
+                    1
+                    / torch.sqrt(alpha)
+                    * (
+                        x
+                        - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise
+                    )
+                    + torch.sqrt(beta) * noise
+                    + cfg_scale * score * beta
+                )
+            if i % 100 == 0:
+                x = x.clamp(-1, 1)
+        model.train()
+        x = (x.clamp(-1, 1) + 1) / 2
+        latents = [(latent.clamp(-1, 1) + 1) / 2 for latent in latents]
+        latents.append(x)
+        if return_latents:
+            return x, torch.stack(latents)
+        # x = (x * 255).type(torch.uint8)
+        return x
+  

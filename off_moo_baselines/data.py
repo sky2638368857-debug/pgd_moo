@@ -310,6 +310,107 @@ def get_dataloader_1(X: np.ndarray,
         return train_loader_perf, val_loader_perf, test_loader_perf, train_loader, val_loader, test_loader
     return train_loader, val_loader, test_loader
 
+def get_dataloader_2(X: np.ndarray,
+                   y: np.ndarray,
+                   X_test: np.ndarray,
+                   y_test: np.ndarray,
+                   X_pref: Optional[np.ndarray] = None,
+                   y_pref: Optional[np.ndarray] = None,
+                   val_ratio: float = 0.9,
+                   batch_size: int = 32,
+                   hypervolumes: Optional[np.ndarray] = None,
+                   preference_loader: bool = False,
+                   three_dim_out: bool = False,
+                   use_diversity_metric: bool = False,
+                   pareto_rankings: Optional[np.ndarray] = None,
+                   diversity_score_threshold: Optional[float] = 0.0):
+    if X_pref is None:
+        X_pref = X
+        y_pref = y
+    if isinstance(X, np.ndarray):
+        X = torch.from_numpy(X).to(**tkwargs)
+    if isinstance(y, np.ndarray):
+        y = torch.from_numpy(y).to(**tkwargs)
+    if isinstance(X_pref, np.ndarray):
+        X_pref = torch.from_numpy(X_pref).to(**tkwargs)
+    if isinstance(y_pref, np.ndarray):
+        y_pref = torch.from_numpy(y_pref).to(**tkwargs)
+    if isinstance(X_test, np.ndarray):
+        X_test = torch.from_numpy(X_test).to(**tkwargs)
+    if isinstance(y_test, np.ndarray):
+        y_test = torch.from_numpy(y_test).to(**tkwargs)
+    if isinstance(hypervolumes, np.ndarray):
+        hypervolumes = torch.from_numpy(hypervolumes).to(**tkwargs)
+    lengths = int(val_ratio*len(X))
+    lengths_pref = int(val_ratio*len(X_pref))
+    X_train = X[:lengths]
+    y_train = y[:lengths]
+    X_val = X[lengths:]
+    y_val = y[lengths:]
+    X_pref_train = X_pref[:lengths_pref]
+    y_pref_train = y_pref[:lengths_pref]
+    X_pref_val = X_pref[lengths_pref:]
+    y_pref_val = y_pref[lengths_pref:]
+
+    if preference_loader:
+        if use_diversity_metric:
+            if pareto_rankings is None:
+                raise ValueError("hv_rankings must be provided if use_individual_hv_contributions is True")
+            assert three_dim_out == False
+            pareto_rankings_train = {}
+            pareto_rankings_val = {}
+            for key in pareto_rankings.keys():
+                pareto_rankings_train[key] = pareto_rankings[key][:lengths_pref]
+                pareto_rankings_val[key] = pareto_rankings[key][lengths_pref:]
+            train_dataset_pref = preference_dataset_ind_1(X_pref_train, y_pref_train, pareto_rankings_train, diversity_score_threshold=diversity_score_threshold)
+            val_dataset_pref = preference_dataset_ind_1(X_pref_val, y_pref_val, pareto_rankings_val, diversity_score_threshold=diversity_score_threshold)
+        else:
+            train_dataset_pref = preference_dataset(X_pref_train, y_pref_train, three_dim_out=three_dim_out)
+            val_dataset_pref = preference_dataset(X_pref_val, y_pref_val, three_dim_out=three_dim_out)
+        test_dataset_pref = preference_dataset(X_test, y_test, three_dim_out=three_dim_out)
+        train_loader_perf = DataLoader(train_dataset_pref,
+                                  batch_size=batch_size,
+                                  shuffle=True,
+                                  #pin_memory=True,
+                                  drop_last=False)
+        val_loader_perf = DataLoader(val_dataset_pref,
+                                batch_size=batch_size * 4,
+                                shuffle=False,
+                                #pin_memory=True,
+                                drop_last=False)
+        test_loader_perf = DataLoader(test_dataset_pref,
+                                batch_size=batch_size * 4,
+                                shuffle=False,
+                                drop_last=False)
+        
+    train_dataset = TensorDataset(X_train, y_train)
+    val_dataset = TensorDataset(X_val, y_val)
+    if hypervolumes is not None:
+        train_dataset = TensorDataset(X_train, y_train, hypervolumes[:lengths])
+        val_dataset = TensorDataset(X_val, y_val, hypervolumes[lengths:])
+    test_dataset = TensorDataset(X_test, y_test)
+    train_loader = DataLoader(train_dataset,
+                            batch_size=batch_size,
+                            shuffle=True,
+                            #pin_memory=True,
+                            drop_last=False)
+    
+    val_loader = DataLoader(val_dataset,
+                            batch_size=batch_size * 4,
+                            shuffle=False,
+                            #pin_memory=True,
+                            drop_last=False)
+    
+    test_loader = DataLoader(test_dataset,
+                            batch_size=batch_size * 4,
+                            shuffle=False,
+                            #pin_memory=True,
+                            drop_last=False)
+    if preference_loader:
+        return train_loader_perf, val_loader_perf, test_loader_perf, train_loader, val_loader, test_loader
+    return train_loader, val_loader, test_loader
+
+
 class preference_dataset(Dataset):
     def __init__(self, X, y, three_dim_out=False):
         self.X = X
