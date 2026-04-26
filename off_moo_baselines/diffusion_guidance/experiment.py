@@ -29,7 +29,6 @@ from off_moo_baselines.diffusion_guidance.ddpm_guidance import (
 from off_moo_baselines.diffusion_guidance.modules import (
     Preference_model,
     Preference_model_1,
-    Preference_model_2,
     Model_unconditional,
     save_model,
     load_model,
@@ -131,8 +130,6 @@ def run(config: dict):
         f"{config['model']}-{config['train_mode']}-{config['task']}-{config['seed']}-0.pt",
     )
 
-
-    
     if versions == "V_0":
         preference_save_path = model_save_path.replace("-0.pt", "-preference.pt")
 
@@ -280,20 +277,20 @@ def run(config: dict):
             )
 
         if os.path.exists(preference_save_path_2):
-            preference_model = Preference_model_2(
+            preference_model = Preference_model_1(
                 input_dim=train_loader.dataset[0][0].shape[-1],
                 device=tkwargs["device"],
                 three_dim_out=config["three_dim_out"],
                 w_dim = n_obj,
             ).to(tkwargs["device"])
-            load_model(preference_model, preference_save_path, device=tkwargs["device"])
+            load_model(preference_model, preference_save_path_2, device=tkwargs["device"])
         else:
             Preference_model_2 = train_preference_2(
-                dataloader=train_loader_pref,
+                dataloader=train_loader_pref_p2,
                 diffusion=diffusion,
-                val_loader=val_loader_pref,
+                val_loader=val_loader_pref_p2,
                 config=config,
-                model_save_path=preference_save_path,
+                model_save_path=preference_save_path_2,
                 three_dim_out=config["three_dim_out"],
                 w_dim = n_obj,
             )
@@ -443,39 +440,166 @@ def run(config: dict):
     ped = pairwise_euclidean_distances(task.normalize_y(res_y))
     ped_75 = pairwise_euclidean_distances(task.normalize_y(res_y_75_percentile))
     ped_50 = pairwise_euclidean_distances(task.normalize_y(res_y_50_percentile))
-    print(f"HV value {hv_value} HV D best {hv_d_best}")
-    hv_results = {
-        "hypervolume_10/D(best)": hv_d_best,
-        "hypervolume_10/100th": hv_value,
-        "hypervolume_10/75th": hv_value_75_percentile,
-        "hypervolume_10/50th": hv_value_50_percentile,
-        "hypervolume_20/100th": hv_value_20,
-        "hypervolume_20/75th": hv_value_20_75_percentile,
-        "hypervolume_20/50th": hv_value_20_50_percentile,
-        "Spread_10/100th": spread_value,
-        "Spacing_10/100th": spacing_value,
-        "Spread_10/75th": spread_value_75_percentile,
-        "Spacing_10/75th": spacing_value_75_percentile,
-        "Spread_20/100th": spread_value_20,
-        "Spacing_20/100th": spacing_value_20,
-        "Spread_20/75th": spread_value_20_75_percentile,
-        "Spacing_20/75th": spacing_value_20_75_percentile,
-        "Spread_20/50th": spread_value_20_50_percentile,
-        "Spacing_20/50th": spacing_value_20_50_percentile,
-        "Spread_10/50th": spread_value_50_percentile,
-        "Spacing_10/50th": spacing_value_50_percentile,
-        "ped_10/100th": ped,
-        "ped_10/75th": ped_75,
-        "ped_10/50th": ped_50,
-        "ped_20/100th": ped_20,
-        "ped_20/75th": ped_20_75,
-        "ped_20/50th": ped_20_50,
-        "evaluation_step": 1,
-    }
 
-    df = pd.DataFrame([hv_results])
-    filename = os.path.join(logging_dir, "hv_results.csv")
-    df.to_csv(filename, index=False)
+    print(f"HV value {hv_value} HV D best {hv_d_best}")
+
+    # =========================
+    # Preference-weighted metrics
+    # =========================
+
+    def compute_weighted_scores(y, w):
+        # y: (N, m), w: (m,)
+        return (y * w).sum(axis=1)
+
+
+    # ---- 统一使用 normalize 后的数据 ----
+    res_y_norm = task.normalize_y(res_y)
+    res_y_75_norm = task.normalize_y(res_y_75_percentile)
+    res_y_50_norm = task.normalize_y(res_y_50_percentile)
+
+    res_y_20_norm = task.normalize_y(res_y_20)
+    res_y_20_75_norm = task.normalize_y(res_y_20_75_percentile)
+    res_y_20_50_norm = task.normalize_y(res_y_20_50_percentile)
+
+
+    # ---- 主结果 ----
+    weighted_scores = compute_weighted_scores(res_y_norm, w)
+    max_weighted = weighted_scores.max()
+    mean_weighted = weighted_scores.mean()
+
+
+    # ---- 75% ----
+    weighted_scores_75 = compute_weighted_scores(res_y_75_norm, w)
+    max_weighted_75 = weighted_scores_75.max()
+    mean_weighted_75 = weighted_scores_75.mean()
+
+
+    # ---- 50% ----
+    weighted_scores_50 = compute_weighted_scores(res_y_50_norm, w)
+    max_weighted_50 = weighted_scores_50.max()
+    mean_weighted_50 = weighted_scores_50.mean()
+
+
+    # ---- res_y_20 ----
+    weighted_scores_20 = compute_weighted_scores(res_y_20_norm, w)
+    max_weighted_20 = weighted_scores_20.max()
+    mean_weighted_20 = weighted_scores_20.mean()
+
+
+    # ---- res_y_20 + percentile ----
+    weighted_scores_20_75 = compute_weighted_scores(res_y_20_75_norm, w)
+    max_weighted_20_75 = weighted_scores_20_75.max()
+    mean_weighted_20_75 = weighted_scores_20_75.mean()
+
+    weighted_scores_20_50 = compute_weighted_scores(res_y_20_50_norm, w)
+    max_weighted_20_50 = weighted_scores_20_50.max()
+    mean_weighted_20_50 = weighted_scores_20_50.mean()
+
+
+    print("=== Preference Metrics ===")
+    print("max_weighted:", max_weighted)
+    print("mean_weighted:", mean_weighted)
+
+
+
+hv_results = {
+
+    # ===== 原有 HV =====
+
+    "hypervolume_10/D(best)": hv_d_best,
+
+    "hypervolume_10/100th": hv_value,
+
+    "hypervolume_10/75th": hv_value_75_percentile,
+
+    "hypervolume_10/50th": hv_value_50_percentile,
+
+    "hypervolume_20/100th": hv_value_20,
+
+    "hypervolume_20/75th": hv_value_20_75_percentile,
+
+    "hypervolume_20/50th": hv_value_20_50_percentile,
+
+    # ===== Diversity =====
+
+    "Spread_10/100th": spread_value,
+
+    "Spacing_10/100th": spacing_value,
+
+    "Spread_10/75th": spread_value_75_percentile,
+
+    "Spacing_10/75th": spacing_value_75_percentile,
+
+    "Spread_20/100th": spread_value_20,
+
+    "Spacing_20/100th": spacing_value_20,
+
+    "Spread_20/75th": spread_value_20_75_percentile,
+
+    "Spacing_20/75th": spacing_value_20_75_percentile,
+
+    "Spread_20/50th": spread_value_20_50_percentile,
+
+    "Spacing_20/50th": spacing_value_20_50_percentile,
+
+    "Spread_10/50th": spread_value_50_percentile,
+
+    "Spacing_10/50th": spacing_value_50_percentile,
+
+    # ===== PED =====
+
+    "ped_10/100th": ped,
+
+    "ped_10/75th": ped_75,
+
+    "ped_10/50th": ped_50,
+
+    "ped_20/100th": ped_20,
+
+    "ped_20/75th": ped_20_75,
+
+    "ped_20/50th": ped_20_50,
+
+    # =========================
+
+    # ✅ 新增：Preference metrics
+
+    # =========================
+
+
+    "weighted_10/max": max_w,
+
+    "weighted_10/mean": mean_w,
+
+    "weighted_10/75th_max": max_w_75,
+
+    "weighted_10/75th_mean": mean_w_75,
+
+    "weighted_10/50th_max": max_w_50,
+
+    "weighted_10/50th_mean": mean_w_50,
+
+    "weighted_20/max": max_w_20,
+
+    "weighted_20/mean": mean_w_20,
+
+    "weighted_20/75th_max": max_w_20_75,
+
+    "weighted_20/75th_mean": mean_w_20_75,
+
+    "weighted_20/50th_max": max_w_20_50,
+
+    "weighted_20/50th_mean": mean_w_20_50,
+
+    "evaluation_step": 1,
+
+}
+
+df = pd.DataFrame([hv_results])
+
+filename = os.path.join(logging_dir, "hv_results.csv")
+
+df.to_csv(filename, index=False)
 
 if __name__ == "__main__":
     from utils import process_args

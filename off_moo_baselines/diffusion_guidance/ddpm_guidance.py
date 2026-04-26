@@ -21,6 +21,7 @@ from off_moo_baselines.diffusion_guidance.modules import (
     Model_unconditional,
     Preference_model,
     Preference_model_1,
+    Preference_model_2,
     save_model,
     load_model,
 )
@@ -331,6 +332,124 @@ def train_preference_1(
         logging.info(f"Epoch {epoch} loss: {np.mean(loss_epoch)}")
     return model
 
+def train_preference_2(
+    dataloader,
+    model=None,
+    diffusion=None,
+    val_loader=None,
+    config=None,
+    tolerance=50,
+    model_save_path=None,
+    three_dim_out=False,
+    w_dim = None,
+):
+    """
+    Train a preference model for guided diffusion sampling.
+
+    This function trains a model to predict preferences between pairs of solutions.
+    The model learns to rank solutions based on their quality, which is then used
+    for guided sampling in the diffusion process.
+
+    Args:
+        dataloader: DataLoader providing (x_1, x_2, y) batches where y indicates preference
+        model: Pre-trained preference model (if None, creates new Preference_model)
+        diffusion: Diffusion process (if None, creates new Diffusion)
+        val_loader: Validation dataloader for early stopping
+        config: Configuration dictionary
+        tolerance (int): Number of epochs without improvement before early stopping
+        model_save_path (str): Path to save the best model
+        three_dim_out (bool): Whether model outputs 3D tensor
+
+    Returns:
+        tuple: (trained_model, diffusion)
+    """
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
+    if model is None:
+        model = Preference_model_2(
+            input_dim=dataloader.dataset[0][0].shape[-1],
+            device=device,
+            three_dim_out=three_dim_out,
+            w_dim=w_dim,
+        ).to(device)
+    if diffusion is None:
+        diffusion = Diffusion(
+            img_size=dataloader.dataset[0][0].shape[-1], device=device
+        ).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=1e-5)
+    best_val_loss = 1e10
+    curr_tol = 0
+    for epoch in range(2000):
+        loss_epoch = []
+        logging.info(f"Starting epoch {epoch}:")
+        pbar = tqdm(dataloader)
+        for i, (x_1, x_2, y_1, y_2, _) in enumerate(pbar):
+            x_1 = x_1.to(device)
+            x_2 = x_2.to(device)
+            y_1 = y_1.to(device)
+            y_2 = y_2.to(device)
+
+            dist = torch.distributions.Dirichlet(torch.ones(model.w_dim))
+            w = dist.sample((y_1.shape[0],)).to(device) 
+
+            s1 = (y_1 * w).sum(dim=1)
+            s2 = (y_2 * w).sum(dim=1)
+            ind = (s1 > s2).long().unsqueeze(1)
+
+            x_1 = x_1 * 2 - 1
+            x_2 = x_2 * 2 - 1
+            x_1, _ = diffusion.noise_images(x_1, t)
+            x_2, _ = diffusion.noise_images(x_2, t)
+            pred = model(x_1, x_2, t, w)
+            loss_1 = loss_fn(pred, ind.squeeze().long())
+            loss = torch.mean(loss_1)
+            loss.backward()
+            optimizer.step()
+            pbar.set_postfix(MSE=loss.item())
+            loss_epoch.append(loss.item())
+
+        if val_loader is not None:
+            model.eval()
+            if epoch % 5 == 0:
+                val_loss = []
+                for epoch in range(5):
+                    for i, (x_1, x_2, y_1, y_2, ind) in enumerate(val_loader):
+                        x_1 = x_1.to(device)
+                        x_2 = x_2.to(device)
+                        y_1 = y_1.to(device)
+                        y_2 = y_2.to(device)
+
+                        dist = torch.distributions.Dirichlet(torch.ones(model.w_dim))
+                        w = dist.sample((y_1.shape[0],)).to(device) 
+
+                        s1 = (y_1 * w).sum(dim=1)
+                        s2 = (y_2 * w).sum(dim=1)
+                        ind = (s1 > s2).long().unsqueeze(1)
+
+                        x_1 = x_1 * 2 - 1
+                        x_2 = x_2 * 2 - 1
+                        t = diffusion.sample_timesteps(x_1.shape[0]).to(device)
+                        x_1, _ = diffusion.noise_images(x_1, t)
+                        x_2, _ = diffusion.noise_images(x_2, t)
+                        pred = model(x_1, x_2, t, w)
+                        loss_1 = loss_fn(pred, ind.squeeze().long())
+                        loss = torch.mean(loss_1)
+                        val_loss.append(loss.item())
+                model.train()
+                logging.info(
+                    f"Epoch {epoch} loss: {np.mean(loss_epoch)} val_loss: {np.mean(val_loss)}"
+                )
+                if np.mean(val_loss) < best_val_loss:
+                    best_val_loss = np.mean(val_loss)
+                    save_model(model, model_save_path, device)
+                    curr_tol = 0
+                else:
+                    curr_tol += 1
+                    if curr_tol > tolerance:
+                        break
+        logging.info(f"Epoch {epoch} loss: {np.mean(loss_epoch)}")
+    return model
+
 # =============================================================================
 # Diffusion Process
 # =============================================================================
@@ -567,7 +686,7 @@ class Diffusion:
             torch.Tensor: Generated samples of shape (n, img_size)
         """
 
-        def compute_grad(x, best_x_data, t, preference_model, params, buffers):
+        def compute_grad(x, best_x_data, t, preference_model, params, buffers, w):
             """
             Compute preference gradient for guided sampling.
 
@@ -665,6 +784,7 @@ class Diffusion:
         preference_model_2,
         best_x_data,
         cfg_scale=3,
+        cfg_scale_2=3,
         return_latents=False,
         ddim=False,
         w = None,
@@ -713,7 +833,7 @@ class Diffusion:
             pref_logits = pref_logits[..., 0].squeeze()
             return pref_logits
         
-        def compute_grad_2(x, best_x_data, t, preference_model, params, buffers):
+        def compute_grad(x, best_x_data, t, preference_model, params, buffers, w):
             """
             Compute preference gradient for guided sampling.
 
@@ -761,19 +881,32 @@ class Diffusion:
             t = (torch.ones(n) * i).long().to(self.device)
             with torch.no_grad():
                 predicted_noise = model(x, t)
+
             if cfg_scale > 0:
                 x_ = x.clone()
                 x_ = x_.detach().requires_grad_(True)
-                score = vmap(
+                score = vmap(grad(compute_grad), (0, 0, 0, None, None, None))(
+                    x_, best_x_data, t, preference_model, params, buffers
+                )
+                best_x_data = x_.detach()
+                score = score.detach()
+            else:
+                score = 0
+            
+            if cfg_scale_2 > 0:
+                x_ = x.clone()
+                x_ = x_.detach().requires_grad_(True)
+                score_2 = vmap(
                     grad(compute_grad),
                     (0, 0, 0, None, None, None, None)  
                 )(
                     x_, best_x_data, t, preference_model, params, buffers, w
                 )
                 best_x_data = x_.detach()
-                score = score.detach()
+                score_2 = score.detach()
             else:
-                score = 0
+                score_2 = 0
+
             alpha = self.alpha[t][:, None]
             alpha_hat = self.alpha_hat[t][:, None]
             alpha_hat_t_1 = self.alpha_hat[t - 1][:, None]
@@ -797,6 +930,7 @@ class Diffusion:
                     )
                     + torch.sqrt(beta) * noise
                     + cfg_scale * score * beta
+                    + cfg_scale_2 * score_2 * beta
                 )
             if i % 100 == 0:
                 x = x.clamp(-1, 1)
