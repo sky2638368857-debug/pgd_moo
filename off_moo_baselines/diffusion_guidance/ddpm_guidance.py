@@ -21,13 +21,11 @@ from off_moo_baselines.diffusion_guidance.modules import (
     Model_unconditional,
     Preference_model,
     Preference_model_1,
-    Preference_model_2,
     save_model,
     load_model,
 )
 import logging
 from torch.func import functional_call, vmap, grad
-
 
 # =============================================================================
 # Logging Configuration
@@ -40,13 +38,139 @@ logging.basicConfig(
     datefmt="%I:%M:%S",
 )
 
+import torch
+import math
+
+
+def generate_moead_weights(n_obj, H):
+    """
+    Generate MOEA/D simplex-lattice reference vectors.
+
+    Args:
+        n_obj (int):
+            Number of objectives.
+
+        H (int):
+            Division parameter.
+
+    Returns:
+        weights: Tensor [N, n_obj]
+    """
+
+    def compositions(n, k):
+        """
+        Generate all integer compositions:
+            x1 + x2 + ... + xk = n
+        """
+        if k == 1:
+            yield (n,)
+        else:
+            for i in range(n + 1):
+                for tail in compositions(n - i, k - 1):
+                    yield (i,) + tail
+
+    weights = torch.tensor(
+        list(compositions(H, n_obj)),
+        dtype=torch.float32
+    )
+
+    weights = weights / H
+
+    return weights
+
+
+def generate_uniform_weights(n_obj, n_samples):
+    """
+    Generate approximately n_samples uniformly distributed
+    MOEA/D reference vectors.
+
+    Strategy:
+        1. Choose H automatically
+        2. Generate all lattice vectors
+        3. Randomly select n_samples vectors if too many
+        4. Add extreme one-hot vectors
+
+    Args:
+        n_obj (int):
+            Number of objectives
+
+        n_samples (int):
+            Desired number of weight vectors
+
+    Returns:
+        W: Tensor [n_samples, n_obj]
+    """
+
+    # --------------------------------------------------
+    # Step 1:
+    # find smallest H such that:
+    #
+    #   C(H + m - 1, m - 1) >= n_samples
+    # --------------------------------------------------
+
+    H = 1
+
+    while True:
+        N = math.comb(H + n_obj - 1, n_obj - 1)
+
+        if N >= n_samples:
+            break
+
+        H += 1
+
+    # --------------------------------------------------
+    # Step 2:
+    # generate lattice vectors
+    # --------------------------------------------------
+
+    W = generate_moead_weights(n_obj, H)
+
+    # --------------------------------------------------
+    # Step 3:
+    # add extreme vectors
+    # --------------------------------------------------
+
+    extreme = torch.eye(n_obj)
+
+    W = torch.cat([W, extreme], dim=0)
+
+    # remove duplicates
+    W = torch.unique(W, dim=0)
+
+    # --------------------------------------------------
+    # Step 4:
+    # random select if too many
+    # --------------------------------------------------
+
+    if len(W) > n_samples:
+
+        idx = torch.randperm(len(W))[:n_samples]
+
+        W = W[idx]
+
+    # --------------------------------------------------
+    # Step 5:
+    # if not enough, repeat random samples
+    # --------------------------------------------------
+
+    elif len(W) < n_samples:
+
+        extra_idx = torch.randint(
+            0,
+            len(W),
+            (n_samples - len(W),)
+        )
+
+        W = torch.cat([W, W[extra_idx]], dim=0)
+
+    return W
 
 # =============================================================================
 # Training Functions
 # =============================================================================
 
 
-def train(dataloader, model=None, diffusion=None, ema=None):
+def train(dataloader, model_save_path, model=None, diffusion=None, ema=None):
     """
     Train an unconditional diffusion model.
 
@@ -66,6 +190,9 @@ def train(dataloader, model=None, diffusion=None, ema=None):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     if model is None:
         model = Model_unconditional(dim=X_size).to(device)
+
+    load_model(model, model_save_path, device=tkwargs["device"])
+
     optimizer = optim.AdamW(model.parameters(), lr=5e-4)
     if diffusion is None:
         diffusion = Diffusion(img_size=X_size, device=device)
@@ -137,6 +264,9 @@ def train_preference(
             device=device,
             three_dim_out=three_dim_out,
         ).to(device)
+
+    load_model(model, model_save_path, device=tkwargs["device"])
+
     if diffusion is None:
         diffusion = Diffusion(
             img_size=dataloader.dataset[0][0].shape[-1], device=device
@@ -160,6 +290,7 @@ def train_preference(
             pred = model(x_1, x_2, t)
             loss_1 = loss_fn(pred, y.squeeze().long())
             loss = torch.mean(loss_1)
+            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             pbar.set_postfix(MSE=loss.item())
@@ -278,6 +409,7 @@ def train_preference_1(
             pred = model(x_1, x_2, t, w)
             loss_1 = loss_fn(pred, ind.squeeze().long())
             loss = torch.mean(loss_1)
+            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             pbar.set_postfix(MSE=loss.item())
@@ -366,12 +498,15 @@ def train_preference_2(
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
     if model is None:
-        model = Preference_model_2(
+        model = Preference_model_1(
             input_dim=dataloader.dataset[0][0].shape[-1],
             device=device,
             three_dim_out=three_dim_out,
             w_dim=w_dim,
         ).to(device)
+
+    load_model(model, model_save_path, device=tkwargs["device"])
+
     if diffusion is None:
         diffusion = Diffusion(
             img_size=dataloader.dataset[0][0].shape[-1], device=device
@@ -380,10 +515,12 @@ def train_preference_2(
     best_val_loss = 1e10
     curr_tol = 0
     for epoch in range(2000):
+        model.train()
         loss_epoch = []
         logging.info(f"Starting epoch {epoch}:")
         pbar = tqdm(dataloader)
         for i, (x_1, x_2, y_1, y_2, _) in enumerate(pbar):
+            
             x_1 = x_1.to(device)
             x_2 = x_2.to(device)
             y_1 = y_1.to(device)
@@ -395,7 +532,8 @@ def train_preference_2(
             s1 = (y_1 * w).sum(dim=1)
             s2 = (y_2 * w).sum(dim=1)
             ind = (s1 > s2).long().unsqueeze(1)
-
+            
+            t = diffusion.sample_timesteps(x_1.shape[0]).to(device)
             x_1 = x_1 * 2 - 1
             x_2 = x_2 * 2 - 1
             x_1, _ = diffusion.noise_images(x_1, t)
@@ -403,6 +541,7 @@ def train_preference_2(
             pred = model(x_1, x_2, t, w)
             loss_1 = loss_fn(pred, ind.squeeze().long())
             loss = torch.mean(loss_1)
+            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             pbar.set_postfix(MSE=loss.item())
@@ -412,7 +551,7 @@ def train_preference_2(
             model.eval()
             if epoch % 5 == 0:
                 val_loss = []
-                for epoch in range(5):
+                for epoch_v in range(5):
                     for i, (x_1, x_2, y_1, y_2, ind) in enumerate(val_loader):
                         x_1 = x_1.to(device)
                         x_2 = x_2.to(device)
@@ -435,9 +574,8 @@ def train_preference_2(
                         loss_1 = loss_fn(pred, ind.squeeze().long())
                         loss = torch.mean(loss_1)
                         val_loss.append(loss.item())
-                model.train()
                 logging.info(
-                    f"Epoch {epoch} loss: {np.mean(loss_epoch)} val_loss: {np.mean(val_loss)}"
+                    f"val Epoch {epoch_v} loss: {np.mean(loss_epoch)} val_loss: {np.mean(val_loss)}"
                 )
                 if np.mean(val_loss) < best_val_loss:
                     best_val_loss = np.mean(val_loss)
@@ -447,6 +585,7 @@ def train_preference_2(
                     curr_tol += 1
                     if curr_tol > tolerance:
                         break
+
         logging.info(f"Epoch {epoch} loss: {np.mean(loss_epoch)}")
     return model
 
@@ -616,7 +755,7 @@ class Diffusion:
                 score = vmap(grad(compute_grad), (0, 0, 0, None, None, None))(
                     x_, best_x_data, t, preference_model, params, buffers
                 )
-                best_x_data = x_.detach()
+                # best_x_data = x_.detach()
                 score = score.detach()
             else:
                 score = 0
@@ -703,7 +842,6 @@ class Diffusion:
             """
             x = x.unsqueeze(0)
             best_x_data = best_x_data.unsqueeze(0)
-            w = w.unsqueeze(0)
             
             predictions = functional_call(
                 preference_model, (params, buffers), (x, best_x_data, t, w)
@@ -784,7 +922,7 @@ class Diffusion:
         preference_model_2,
         best_x_data,
         cfg_scale=3,
-        cfg_scale_2=3,
+        cfg_scale_p=3,
         return_latents=False,
         ddim=False,
         w = None,
@@ -833,7 +971,7 @@ class Diffusion:
             pref_logits = pref_logits[..., 0].squeeze()
             return pref_logits
         
-        def compute_grad(x, best_x_data, t, preference_model, params, buffers, w):
+        def compute_grad_2(x, best_x_data, t, preference_model_2, params, buffers, w):
             """
             Compute preference gradient for guided sampling.
 
@@ -850,10 +988,9 @@ class Diffusion:
             """
             x = x.unsqueeze(0)
             best_x_data = best_x_data.unsqueeze(0)
-            w = w.unsqueeze(0)
             
             predictions = functional_call(
-                preference_model, (params, buffers), (x, best_x_data, t, w)
+                preference_model_2, (params, buffers), (x, best_x_data, t, w)
             )
             pref_logits = torch.nn.functional.log_softmax(predictions, dim=-1)
             pref_logits = pref_logits[..., 0].squeeze()
@@ -875,6 +1012,8 @@ class Diffusion:
         x = torch.randn((n, self.img_size)).to(self.device)
         best_x_data = best_x_data.to(x.dtype).to(self.device)
         best_x_data = 2 * best_x_data - 1
+        best_x_data_p = best_x_data.clone()
+
         for i in tqdm(reversed(range(1, self.noise_steps)), position=0):
             if i % 10 == 0 and return_latents:
                 latents.append(x)
@@ -893,19 +1032,196 @@ class Diffusion:
             else:
                 score = 0
             
-            if cfg_scale_2 > 0:
+            if cfg_scale_p > 0:
                 x_ = x.clone()
                 x_ = x_.detach().requires_grad_(True)
-                score_2 = vmap(
-                    grad(compute_grad),
-                    (0, 0, 0, None, None, None, None)  
-                )(
-                    x_, best_x_data, t, preference_model, params, buffers, w
+                score_p = vmap(grad(compute_grad_2),(0, 0, 0, None, None, None, None))(  
+                    x_, best_x_data_p, t, preference_model_2, params_2, buffers_2, w
+                )
+                best_x_data_p = x_.detach()
+                score_p = score_p.detach()
+            else:
+                score_p = 0
+
+            # print("====================")
+            # print(
+            #     "cfg norm:",
+            #     score.norm(dim=-1),
+            #     "cfg_f norm:",
+            #     score_p.norm(dim=-1)
+            # )
+
+            score = score / (score.norm(dim=-1, keepdim=True) + 1e-8)
+            score_p = score_p / (score_p.norm(dim=-1, keepdim=True) + 1e-8)
+            
+            alpha = self.alpha[t][:, None]
+            alpha_hat = self.alpha_hat[t][:, None]
+            alpha_hat_t_1 = self.alpha_hat[t - 1][:, None]
+            beta = self.beta[t][:, None]
+            if i > 1 and not ddim:
+                noise = torch.randn_like(x)
+            else:
+                noise = torch.zeros_like(x)
+            if ddim:
+                x = (
+                    (torch.sqrt(alpha_hat_t_1) / torch.sqrt(alpha_hat))
+                    * (x - (torch.sqrt(1 - alpha_hat) * predicted_noise))
+                    + torch.sqrt(1 - alpha_hat_t_1) * cfg_scale * score
+                    + torch.sqrt(1 - alpha_hat_t_1) * cfg_scale_p * score_p
+                )
+            else:
+                x = (
+                    1
+                    / torch.sqrt(alpha)
+                    * (
+                        x
+                        - ((1 - alpha) / (torch.sqrt(1 - alpha_hat))) * predicted_noise
+                    )
+                    + torch.sqrt(beta) * noise
+                    + cfg_scale * score * beta
+                    + cfg_scale_p * score_p * beta
+                )
+            if i % 100 == 0:
+                x = x.clamp(-1, 1)
+        model.train()
+        x = (x.clamp(-1, 1) + 1) / 2
+        latents = [(latent.clamp(-1, 1) + 1) / 2 for latent in latents]
+        latents.append(x)
+        if return_latents:
+            return x, torch.stack(latents)
+        # x = (x * 255).type(torch.uint8)
+        return x
+
+    def sample_with_preference_3(
+        self,
+        model,
+        n,
+        n_obj,
+        preference_model,
+        preference_model_2,
+        best_x_data,
+        cfg_scale=3,
+        cfg_scale_p=3,
+        return_latents=False,
+        ddim=False,
+    ):
+        """
+        Sample new images using preference-guided diffusion.
+
+        This method performs reverse diffusion sampling with preference guidance.
+        It uses a preference model to guide the sampling process towards solutions
+        that are close to the pareto front.
+
+        Args:
+            model: Trained diffusion model for noise prediction
+            n (int): Number of samples to generate
+            preference_model: Trained preference model for guidance
+            best_x_data (torch.Tensor): Best known solutions for comparison
+            cfg_scale (float): Scale factor for preference guidance (default: 3)
+            return_latents (bool): Whether to return intermediate latents (default: False)
+            ddim (bool): Whether to use DDIM sampling (default: False)
+
+        Returns:
+            torch.Tensor: Generated samples of shape (n, img_size)
+        """
+
+        def compute_grad(x, best_x_data, t, preference_model, params, buffers):
+            """
+            Compute preference gradient for guided sampling.
+
+            Args:
+                x: Current sample
+                best_x_data: Best known solutions in the training set
+                t: Current timestep
+                preference_model: Preference model
+                params: Model parameters
+                buffers: Model buffers
+
+            Returns:
+                torch.Tensor: Preference gradient
+            """
+            x = x.unsqueeze(0)
+            best_x_data = best_x_data.unsqueeze(0)
+            predictions = functional_call(
+                preference_model, (params, buffers), (x, best_x_data, t)
+            )
+            pref_logits = torch.nn.functional.log_softmax(predictions, dim=-1)
+            pref_logits = pref_logits[..., 0].squeeze()
+            return pref_logits
+        
+        def compute_grad_2(x, best_x_data, t, preference_model_2, params, buffers, w):
+            """
+            Compute preference gradient for guided sampling.
+
+            Args:
+                x: Current sample
+                best_x_data: Best known solutions in the training set
+                t: Current timestep
+                preference_model: Preference model
+                params: Model parameters
+                buffers: Model buffers
+
+            Returns:
+                torch.Tensor: Preference gradient
+            """
+            x = x.unsqueeze(0)
+            best_x_data = best_x_data.unsqueeze(0)
+            
+            predictions = functional_call(
+                preference_model_2, (params, buffers), (x, best_x_data, t, w)
+            )
+            pref_logits = torch.nn.functional.log_softmax(predictions, dim=-1)
+            pref_logits = pref_logits[..., 0].squeeze()
+            return pref_logits
+        
+        params = {k: v.detach() for k, v in preference_model.named_parameters()}
+        buffers = {k: v.detach() for k, v in preference_model.named_buffers()}
+
+        params_2 = {k: v.detach() for k, v in preference_model_2.named_parameters()}
+        buffers_2 = {k: v.detach() for k, v in preference_model_2.named_buffers()}
+
+        logging.info(f"Sampling {n} new images....")
+        model.eval()
+        preference_model.eval()
+        preference_model_2.eval()
+
+        latents = []
+
+        x = torch.randn((n, self.img_size)).to(self.device)
+        best_x_data = best_x_data.to(x.dtype).to(self.device)
+        best_x_data = 2 * best_x_data - 1
+        best_x_data_p = best_x_data.clone()
+
+        w = generate_uniform_weights(n_obj=n_obj, n_samples=n).to(self.device).to(x.dtype)
+
+        for i in tqdm(reversed(range(1, self.noise_steps)), position=0):
+            if i % 10 == 0 and return_latents:
+                latents.append(x)
+            t = (torch.ones(n) * i).long().to(self.device)
+            with torch.no_grad():
+                predicted_noise = model(x, t)
+
+            if cfg_scale > 0:
+                x_ = x.clone()
+                x_ = x_.detach().requires_grad_(True)
+                score = vmap(grad(compute_grad), (0, 0, 0, None, None, None))(
+                    x_, best_x_data, t, preference_model, params, buffers
                 )
                 best_x_data = x_.detach()
-                score_2 = score.detach()
+                score = score.detach()
             else:
-                score_2 = 0
+                score = 0
+            
+            if cfg_scale_p > 0:
+                x_ = x.clone()
+                x_ = x_.detach().requires_grad_(True)
+                score_p = vmap(grad(compute_grad_2),(0, 0, 0, None, None, None, 0))(  
+                    x_, best_x_data_p, t, preference_model_2, params_2, buffers_2, w
+                )
+                best_x_data_p = x_.detach()
+                score_p = score_p.detach()
+            else:
+                score_p = 0
 
             alpha = self.alpha[t][:, None]
             alpha_hat = self.alpha_hat[t][:, None]
@@ -919,7 +1235,9 @@ class Diffusion:
                 x = (
                     (torch.sqrt(alpha_hat_t_1) / torch.sqrt(alpha_hat))
                     * (x - (torch.sqrt(1 - alpha_hat) * predicted_noise))
-                ) + torch.sqrt(1 - alpha_hat_t_1) * cfg_scale * score
+                    + torch.sqrt(1 - alpha_hat_t_1) * cfg_scale * score
+                    + torch.sqrt(1 - alpha_hat_t_1) * cfg_scale_p * score_p
+                )
             else:
                 x = (
                     1
@@ -930,7 +1248,7 @@ class Diffusion:
                     )
                     + torch.sqrt(beta) * noise
                     + cfg_scale * score * beta
-                    + cfg_scale_2 * score_2 * beta
+                    + cfg_scale_p * score_p * beta
                 )
             if i % 100 == 0:
                 x = x.clamp(-1, 1)
@@ -942,4 +1260,4 @@ class Diffusion:
             return x, torch.stack(latents)
         # x = (x * 255).type(torch.uint8)
         return x
-  
+   

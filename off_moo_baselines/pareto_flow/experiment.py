@@ -7,10 +7,8 @@ import pandas as pd
 import datetime 
 import json 
 from copy import deepcopy
-BASE_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..", ".."
-)
+
+BASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 sys.path.append(BASE_PATH)
 
 import off_moo_bench as ob

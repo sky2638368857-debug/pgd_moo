@@ -23,14 +23,18 @@ from off_moo_baselines.diffusion_guidance.ddpm_guidance import (
     train,
     Diffusion,
     train_preference,
+    train_preference_1,
+    train_preference_2,
 )
 from off_moo_baselines.diffusion_guidance.modules import (
     Preference_model,
+    Preference_model_1,
+    Preference_model_3,
     Model_unconditional,
     save_model,
     load_model,
 )
-from off_moo_baselines.data import tkwargs, get_dataloader, get_preference_rankings
+from off_moo_baselines.data import tkwargs, get_dataloader, get_dataloader_1,get_preference_rankings
 from off_moo_bench.task_set import *
 from off_moo_bench.evaluation.metrics import hv
 
@@ -138,24 +142,90 @@ def run(config: dict):
         model_save_dir,
         f"{config['model']}-{config['train_mode']}-{config['task']}-{config['seed']}-0.pt",
     )
-    preference_save_path = model_save_path.replace("-0.pt", "-preference.pt")
 
-    (train_loader_pref, val_loader_pref, _, train_loader, _, _) = get_dataloader(
-        X,
-        y,
-        X_test,
-        y_test,
-        X_pref=X_pref if config["subsample"] else None,
-        y_pref=y_pref if config["subsample"] else None,
-        val_ratio=0.9,
-        batch_size=config["batch_size"],
-        preference_loader=True,
-        hypervolumes=hypervolumes,
-        three_dim_out=config["three_dim_out"],
-        use_diversity_metric=config["use_diversity_metric"],
-        pareto_rankings=ind_pareto_rank,
-        diversity_score_threshold=config["diversity_score_threshold"],
-    )
+    versions = "V_3"
+
+    if versions == "V_0":
+        preference_save_path = model_save_path.replace("-0.pt", "-preference.pt")
+
+    elif versions == "V_1":
+        preference_save_path = model_save_path.replace("-0.pt", "-preference_1.pt")
+
+    elif versions == "V_2":
+        preference_save_path = model_save_path.replace("-0.pt", "-preference.pt")
+        preference_save_path_2 = model_save_path.replace("-0.pt", "-preference_2.pt")
+    
+    elif versions == "V_3":
+        preference_save_path = model_save_path.replace("-0.pt", "-preference_3.pt")
+
+    if versions == "V_0" or versions == "V_3":
+        (train_loader_pref, val_loader_pref, _, train_loader, _, _) = get_dataloader(
+            X,
+            y,
+            X_test,
+            y_test,
+            X_pref=X_pref if config["subsample"] else None,
+            y_pref=y_pref if config["subsample"] else None,
+            val_ratio=0.9,
+            batch_size=config["batch_size"],
+            preference_loader=True,
+            hypervolumes=hypervolumes,
+            three_dim_out=config["three_dim_out"],
+            use_diversity_metric=config["use_diversity_metric"],
+            pareto_rankings=ind_pareto_rank,
+            diversity_score_threshold=config["diversity_score_threshold"],
+        )
+    elif versions == "V_1":
+        (train_loader_pref, val_loader_pref, _, train_loader, _, _) = get_dataloader_1(
+            X,
+            y,
+            X_test,
+            y_test,
+            X_pref=X_pref if config["subsample"] else None,
+            y_pref=y_pref if config["subsample"] else None,
+            val_ratio=0.9,
+            batch_size=config["batch_size"],
+            preference_loader=True,
+            hypervolumes=hypervolumes,
+            three_dim_out=config["three_dim_out"],
+            use_diversity_metric=config["use_diversity_metric"],
+            pareto_rankings=ind_pareto_rank,
+            diversity_score_threshold=config["diversity_score_threshold"],
+        )
+    elif versions == "V_2":
+        (train_loader_pref, val_loader_pref, _, train_loader, _, _) = get_dataloader(
+            X,
+            y,
+            X_test,
+            y_test,
+            X_pref=X_pref if config["subsample"] else None,
+            y_pref=y_pref if config["subsample"] else None,
+            val_ratio=0.9,
+            batch_size=config["batch_size"],
+            preference_loader=True,
+            hypervolumes=hypervolumes,
+            three_dim_out=config["three_dim_out"],
+            use_diversity_metric=config["use_diversity_metric"],
+            pareto_rankings=ind_pareto_rank,
+            diversity_score_threshold=config["diversity_score_threshold"],
+        )
+
+        (train_loader_pref_p2, val_loader_pref_p2, _, train_loader, _, _) = get_dataloader_1(
+            X,
+            y,
+            X_test,
+            y_test,
+            X_pref=X_pref if config["subsample"] else None,
+            y_pref=y_pref if config["subsample"] else None,
+            val_ratio=0.9,
+            batch_size=config["batch_size"],
+            preference_loader=True,
+            hypervolumes=hypervolumes,
+            three_dim_out=config["three_dim_out"],
+            use_diversity_metric=config["use_diversity_metric"],
+            pareto_rankings=ind_pareto_rank,
+            diversity_score_threshold=config["diversity_score_threshold"],
+        )
 
     if os.path.exists(model_save_path):
         model_uncond = Model_unconditional(dim=n_dim)
@@ -168,23 +238,96 @@ def run(config: dict):
             model=model_uncond, save_path=model_save_path, device=model_uncond.device
         )
         
-    if os.path.exists(preference_save_path):
-        preference_model = Preference_model(
-            input_dim=train_loader.dataset[0][0].shape[-1],
-            device=tkwargs["device"],
-            three_dim_out=config["three_dim_out"],
-        ).to(tkwargs["device"])
-        load_model(preference_model, preference_save_path, device=tkwargs["device"])
-    else:
-        print("===============Training preference model..." + preference_save_path)
-        preference_model = train_preference(
-            dataloader=train_loader_pref,
-            diffusion=diffusion,
-            val_loader=val_loader_pref,
-            config=config,
-            model_save_path=preference_save_path,
-            three_dim_out=config["three_dim_out"],
-        )
+    if versions == "V_0":
+        if os.path.exists(preference_save_path):
+            preference_model = Preference_model(
+                input_dim=train_loader.dataset[0][0].shape[-1],
+                device=tkwargs["device"],
+                three_dim_out=config["three_dim_out"],
+            ).to(tkwargs["device"])
+            load_model(preference_model, preference_save_path, device=tkwargs["device"])
+        else:
+            preference_model = train_preference(
+                dataloader=train_loader_pref,
+                diffusion=diffusion,
+                val_loader=val_loader_pref,
+                config=config,
+                model_save_path=preference_save_path,
+                three_dim_out=config["three_dim_out"],
+            )
+    elif versions == "V_1":
+        if os.path.exists(preference_save_path):
+            preference_model = Preference_model_1(
+                input_dim=train_loader.dataset[0][0].shape[-1],
+                device=tkwargs["device"],
+                three_dim_out=config["three_dim_out"],
+                w_dim = n_obj,
+            ).to(tkwargs["device"])
+            load_model(preference_model, preference_save_path, device=tkwargs["device"])
+        else:
+            preference_model = train_preference_1(
+                dataloader=train_loader_pref,
+                diffusion=diffusion,
+                val_loader=val_loader_pref,
+                config=config,
+                model_save_path=preference_save_path,
+                three_dim_out=config["three_dim_out"],
+                w_dim = n_obj,
+            )
+    elif versions == "V_2":
+
+        if os.path.exists(preference_save_path):
+            preference_model = Preference_model(
+                input_dim=train_loader.dataset[0][0].shape[-1],
+                device=tkwargs["device"],
+                three_dim_out=config["three_dim_out"],
+            ).to(tkwargs["device"])
+            load_model(preference_model, preference_save_path, device=tkwargs["device"])
+        else:
+            preference_model = train_preference(
+                dataloader=train_loader_pref,
+                diffusion=diffusion,
+                val_loader=val_loader_pref,
+                config=config,
+                model_save_path=preference_save_path,
+                three_dim_out=config["three_dim_out"],
+            )
+
+        if os.path.exists(preference_save_path_2):
+            Preference_model_2 = Preference_model_1(
+                input_dim=train_loader.dataset[0][0].shape[-1],
+                device=tkwargs["device"],
+                three_dim_out=config["three_dim_out"],
+                w_dim = n_obj,
+            ).to(tkwargs["device"])
+            load_model(Preference_model_2, preference_save_path_2, device=tkwargs["device"])
+        else:
+            Preference_model_2 = train_preference_2(
+                dataloader=train_loader_pref_p2,
+                diffusion=diffusion,
+                val_loader=val_loader_pref_p2,
+                config=config,
+                model_save_path=preference_save_path_2,
+                three_dim_out=config["three_dim_out"],
+                w_dim = n_obj,
+            )
+    elif versions == "V_3":
+        if os.path.exists(preference_save_path):
+            preference_model = Preference_model_3(
+                input_dim=train_loader.dataset[0][0].shape[-1],
+                device=tkwargs["device"],
+                three_dim_out=config["three_dim_out"],
+            ).to(tkwargs["device"])
+            load_model(preference_model, preference_save_path, device=tkwargs["device"])
+        else:
+            preference_model = train_preference(
+                dataloader=train_loader_pref,
+                diffusion=diffusion,
+                val_loader=val_loader_pref,
+                config=config,
+                model_save_path=preference_save_path,
+                three_dim_out=config["three_dim_out"],
+            )
     
     acc = evaluate_preference(preference_model, val_loader_pref, diffusion, tkwargs["device"])
     # ===== 保存到统一文件 =====

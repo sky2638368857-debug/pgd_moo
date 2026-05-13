@@ -1,0 +1,481 @@
+
+    === Final Averaged Metrics ===
+    task: DTLZ4-Exact-v0
+    HV: 10.418128172886401 | HV20: 10.306701639680705
+    Spread: 1.7444204932006284
+    Spacing: 0.026338192171419816
+    PED: 0.700488318116316
+    Pref max: 0.47430841949659197
+    Pref mean: 0.2710240981763433
+    dataset_pref_score_mean: 0.8831887026584311
+    
+    === Final Averaged Metrics ===
+    task: DTLZ2-Exact-v0
+    HV: 10.27526114674608 | HV20: 10.22848800445268
+    Spread: 0.8059564789671979
+    Spacing: 0.051152857364553904
+    PED: 0.5674612689327424
+    Pref max: 0.5842051620303802
+    Pref mean: 0.44074373033898556
+    dataset_pref_score_mean: 0.8586242479221802
+    
+    === Final Averaged Metrics ===
+    task: DTLZ3-Exact-v0
+    HV: 10.633584191228106 | HV20: 10.645877739865286
+    Spread: 0.7045433928468301
+    Spacing: 0.031876503571186064
+    PED: 0.32099458132710945
+    Pref max: 0.36006445257427766
+    Pref mean: 0.14948045288330208
+    dataset_pref_score_mean: 0.8245183922200668
+    
+    === Final Averaged Metrics ===
+    task: ZDT4-Exact-v0
+    HV: 4.091391565375346 | HV20: 4.104944836393798
+    Spread: 0.6035254842400479
+    Spacing: 0.011450436488744088
+    PED: 0.1390814810304517
+    Pref max: 0.7400503713326071
+    Pref mean: 0.5545080012488497
+    dataset_pref_score_mean: 0.9159687816364355
+    
+    === Final Averaged Metrics ===
+    task: ZDT2-Exact-v0
+    HV: 5.4165322090747114 | HV20: 5.50725172209471
+    Spread: 0.6137584717123288
+    Spacing: 0.001303317321678781
+    PED: 0.1168455359951112
+    Pref max: 0.23533152174438485
+    Pref mean: 0.13627105678132392
+    dataset_pref_score_mean: 0.9483104626544935
+    
+    === Final Averaged Metrics ===
+    task: DTLZ1-Exact-v0
+    HV: 10.646870005754643 | HV20: 10.647266914713816
+    Spread: 0.8265896545896028
+    Spacing: 0.014028815704616249
+    PED: 0.21463037192818984
+    Pref max: 0.17008193640214825
+    Pref mean: 0.07245705924127085
+    dataset_pref_score_mean: 0.437009263650676
+    
+    === Final Averaged Metrics ===
+    task: ZDT1-Exact-v0
+    HV: 2.476743380614898 | HV20: 2.5482307551196337
+    Spread: 0.6142671716959021
+    Spacing: 0.0004263334386328499
+    PED: 0.039888621963819725
+    Pref max: 0.5612716435179443
+    Pref mean: 0.5112663017976573
+    dataset_pref_score_mean: 0.8448945908536152
+    
+    === Final Averaged Metrics ===
+    task: ZDT3-Exact-v0
+    HV: 3.1384531953979247 | HV20: 3.15879363792847
+    Spread: 0.625984237949535
+    Spacing: 0.0006403678046136088
+    PED: 0.06488696731302475
+    Pref max: 0.5711082709979127
+    Pref mean: 0.5125070952435905
+    dataset_pref_score_mean: 0.9021490062570472
+    
+    === Final Averaged Metrics ===
+    task: ZDT6-Exact-v0
+    HV: 1.7526868686734653 | HV20: 1.836933536575173
+    Spread: 0.6601764799854328
+    Spacing: 0.002722094122412678
+    PED: 0.03750171334298247
+    Pref max: 0.9902018150354739
+    Pref mean: 0.9558658267845922
+    dataset_pref_score_mean: 0.9872335817671151
+    
+    === Final Averaged Metrics ===
+    task: DTLZ5-Exact-v0
+    HV: 7.653356604741553 | HV20: 8.608422926717967
+    Spread: 0.6390552152205491
+    Spacing: 0.032108928908232366
+    PED: 0.312414402686252
+    Pref max: 0.6004930175023641
+    Pref mean: 0.4607516232309448
+    dataset_pref_score_mean: 0.8892616423499979
+    
+    === Final Averaged Metrics ===
+    task: DTLZ6-Exact-v0
+    HV: 10.342127595713038 | HV20: 10.437881085549265
+    Spread: 0.7948013159323555
+    Spacing: 0.03588374034690144
+    PED: 0.4694910528574883
+    Pref max: 0.49942535915382924
+    Pref mean: 0.27487634704504726
+    dataset_pref_score_mean: 0.9892008019160656
+    
+    === Final Averaged Metrics ===
+    task: DTLZ3-Exact-v0
+    HV: 9.915509487504888 | HV20: 10.530677994197003
+    Spread: 1.554257581464578
+    Spacing: 0.022227954924206223
+    PED: 0.13987867088638437
+    Pref max: 0.22167809459113544
+    Pref mean: 0.10701355731573149
+    dataset_pref_score_mean: 0.8245183922200668
+    
+    === Final Averaged Metrics ===
+    task: DTLZ2-Exact-v0
+    HV: 6.887163362553718 | HV20: 6.787929288576205
+    Spread: 1.366410113749932
+    Spacing: 0.005680312938241932
+    PED: 0.05156148178366508
+    Pref max: 0.27648142063258796
+    Pref mean: 0.23893508790613366
+    dataset_pref_score_mean: 0.8586242479221802
+    
+    === Final Averaged Metrics ===
+    task: DTLZ7-Exact-v0
+    HV: 6.123355744377615 | HV20: 7.496540644272818
+    Spread: 0.693101185274128
+    Spacing: 0.027061563699154356
+    PED: 0.1543089005905333
+    Pref max: 0.782638945849376
+    Pref mean: 0.707087550822864
+    dataset_pref_score_mean: 0.9768015956021567
+    
+    === Final Averaged Metrics ===
+    task: DTLZ4-Exact-v0
+    HV: 7.4344010022522555 | HV20: 7.073409625301053
+    Spread: 1.4224805989151752
+    Spacing: 0.0013574964807524478
+    PED: 0.10196971205402376
+    Pref max: 0.33189660625930345
+    Pref mean: 0.2948218845267122
+    dataset_pref_score_mean: 0.8831887026584311
+    
+    === Final Averaged Metrics ===
+    task: RE21-Exact-v0
+    HV: 4.529419327251597 | HV20: 4.50952314579119
+    Spread: 1.3655908784099036
+    Spacing: 0.02106047364726745
+    PED: 0.4215284413391902
+    Pref max: 0.6633075862489894
+    Pref mean: 0.5230179778340222
+    dataset_pref_score_mean: 0.6522792362532911
+    
+    === Final Averaged Metrics ===
+    task: RE22-Exact-v0
+    HV: 4.83998153157909 | HV20: 4.838755632824971
+    Spread: nan
+    Spacing: nan
+    PED: nan
+    Pref max: inf
+    Pref mean: inf
+    dataset_pref_score_mean: 0.7007709412076178
+    
+    === Final Averaged Metrics ===
+    task: ZDT6-Exact-v0
+    HV: 4.233680856120506 | HV20: 4.753681292866127
+    Spread: 0.9249149251957679
+    Spacing: 0.023370964759759857
+    PED: 0.3118556880567971
+    Pref max: 0.9823920293070895
+    Pref mean: 0.5031303971666681
+    dataset_pref_score_mean: 0.9872335817671151
+    
+    === Final Averaged Metrics ===
+    task: ZDT3-Exact-v0
+    HV: 5.061262657053519 | HV20: 5.4830046916955775
+    Spread: 0.6248565370768976
+    Spacing: 0.0005190508776922312
+    PED: 0.02502140377231959
+    Pref max: 0.32166796853599383
+    Pref mean: 0.2923153639087223
+    dataset_pref_score_mean: 0.9021490062570472
+    
+    === Final Averaged Metrics ===
+    task: RE24-Exact-v0
+    HV: 4.836573258365253 | HV20: 4.836803183502589
+    Spread: 1.187572868295466
+    Spacing: 0.009483855957719578
+    PED: 0.38871483614640573
+    Pref max: 0.3953074633090438
+    Pref mean: 0.16683348790082547
+    dataset_pref_score_mean: 0.38788988378278344
+    
+    === Final Averaged Metrics ===
+    task: RE23-Exact-v0
+    HV: 4.837806575723542 | HV20: 4.834119211785774
+    Spread: 1.688180834202801
+    Spacing: 0.01305180228245672
+    PED: 0.31210546339194095
+    Pref max: 0.6172362108118614
+    Pref mean: 0.2452002387475858
+    dataset_pref_score_mean: 0.6045452933428436
+    
+    === Final Averaged Metrics ===
+    task: DTLZ6-Exact-v0
+    HV: 8.416406852155855 | HV20: 9.011107461575879
+    Spread: 1.0032865053664963
+    Spacing: 0.011822487303164386
+    PED: 0.1048905260138433
+    Pref max: 0.33561510643843295
+    Pref mean: 0.1999296310698763
+    dataset_pref_score_mean: 0.9892008019160656
+    
+    === Final Averaged Metrics ===
+    task: ZDT2-Exact-v0
+    HV: 4.730932151122748 | HV20: 4.808990786568921
+    Spread: 0.6091363147355137
+    Spacing: 0.0015399118781476086
+    PED: 0.02262830157594429
+    Pref max: 0.26635536825748574
+    Pref mean: 0.23545855090948326
+    dataset_pref_score_mean: 0.9483104626544935
+    
+    === Final Averaged Metrics ===
+    task: ZDT1-Exact-v0
+    HV: 4.343576909847735 | HV20: 4.032348338454671
+    Spread: 0.6363315699947991
+    Spacing: 0.0025493194250828057
+    PED: 0.0444650449863413
+    Pref max: 0.3190797595667326
+    Pref mean: 0.27161982268161555
+    dataset_pref_score_mean: 0.8448945908536152
+    
+    === Final Averaged Metrics ===
+    task: DTLZ5-Exact-v0
+    HV: 7.169193999398651 | HV20: 7.178922292542114
+    Spread: 0.7770488937437057
+    Spacing: 0.011584950621103358
+    PED: 0.46267092067438287
+    Pref max: 0.6288429273163343
+    Pref mean: 0.5115574458161357
+    dataset_pref_score_mean: 0.8892616423499979
+    
+    === Final Averaged Metrics ===
+    task: RE31-Exact-v0
+    HV: 10.605210411180442 | HV20: 10.559144033305225
+    Spread: 1.288169979506042
+    Spacing: 0.03664796250144319
+    PED: 0.6268746777237754
+    Pref max: 1.1875084666892572
+    Pref mean: 0.2518812863997526
+    dataset_pref_score_mean: 0.7569391049708611
+    
+    === Final Averaged Metrics ===
+    task: RE25-Exact-v0
+    HV: 4.838914350520171 | HV20: 4.838568588353207
+    Spread: 1.09879767019104
+    Spacing: 0.0385049539886213
+    PED: 0.17000884066647087
+    Pref max: 0.5530144760518837
+    Pref mean: 0.06187992700762999
+    dataset_pref_score_mean: 0.6187751212503968
+    
+    === Final Averaged Metrics ===
+    task: RE21-Exact-v0
+    HV: 4.189741073729733 | HV20: 4.496941658561118
+    Spread: 1.0616393432965137
+    Spacing: 0.02112217432489789
+    PED: 0.25591149277642566
+    Pref max: 0.5737714513222283
+    Pref mean: 0.3711385476053748
+    dataset_pref_score_mean: 0.6522792362532911
+    
+    === Final Averaged Metrics ===
+    task: DTLZ7-Exact-v0
+    HV: 10.35613768706528 | HV20: 10.35613768706528
+    Spread: 1.1154378213770129
+    Spacing: 0.023528344477687
+    PED: 0.2171176237258897
+    Pref max: 0.23008709639048708
+    Pref mean: 0.10234415063450644
+    dataset_pref_score_mean: 0.9768015956021567
+    
+    === Final Averaged Metrics ===
+    task: RE23-Exact-v0
+    HV: 4.839856147120604 | HV20: 4.8398215332156695
+    Spread: 1.4017288231837757
+    Spacing: 0.008031287675261343
+    PED: 0.4947470808650821
+    Pref max: 0.6138569835569376
+    Pref mean: 0.3334602623300629
+    dataset_pref_score_mean: 0.6045452933428436
+    
+    === Final Averaged Metrics ===
+    task: RE24-Exact-v0
+    HV: 4.836765017273362 | HV20: 4.836684929801899
+    Spread: 1.276839148810642
+    Spacing: 0.013418138970715294
+    PED: 0.3374260166793637
+    Pref max: 0.620593947914081
+    Pref mean: 0.13114121403930204
+    dataset_pref_score_mean: 0.38788988378278344
+    
+    === Final Averaged Metrics ===
+    task: DTLZ1-Exact-v0
+    HV: 10.646236018751985 | HV20: 10.647383422819662
+    Spread: 0.6964199811913481
+    Spacing: 0.027256894739185064
+    PED: 0.27787264305835147
+    Pref max: 0.2549583033116284
+    Pref mean: 0.09112910681154016
+    dataset_pref_score_mean: 0.437009263650676
+    
+    === Final Averaged Metrics ===
+    task: RE22-Exact-v0
+    HV: 4.839386567485636 | HV20: 4.839947954934722
+    Spread: nan
+    Spacing: nan
+    PED: nan
+    Pref max: inf
+    Pref mean: inf
+    dataset_pref_score_mean: 0.7007709412076178
+    
+    === Final Averaged Metrics ===
+    task: RE34-Exact-v0
+    HV: 8.829081257073206 | HV20: 8.631485556193573
+    Spread: 0.4905905616782749
+    Spacing: 0.021512814881277396
+    PED: 0.33492027242810996
+    Pref max: 0.6462303585376511
+    Pref mean: 0.4446522082577993
+    dataset_pref_score_mean: 0.7125753253376367
+    
+    === Final Averaged Metrics ===
+    task: RE32-Exact-v0
+    HV: 10.643687001581146 | HV20: 10.646375613164498
+    Spread: 1.619569293959846
+    Spacing: 0.03110541746971491
+    PED: 0.2904848719357536
+    Pref max: 0.8830764273666152
+    Pref mean: 0.08175618923157132
+    dataset_pref_score_mean: 0.6513536799732316
+    
+    === Final Averaged Metrics ===
+    task: RE35-Exact-v0
+    HV: 10.452453708554343 | HV20: 10.434934308148957
+    Spread: 0.728678742117108
+    Spacing: 0.03219503198915081
+    PED: 0.4997672094216853
+    Pref max: 0.9348480255951641
+    Pref mean: 0.29025323052433893
+    dataset_pref_score_mean: 0.8959458011722672
+    
+    === Final Averaged Metrics ===
+    task: ZDT4-Exact-v0
+    HV: 4.336530284586545 | HV20: 4.095040840202761
+    Spread: 0.5631775769087008
+    Spacing: 0.015213317118951759
+    PED: 0.12348458265876958
+    Pref max: 0.8573869087319372
+    Pref mean: 0.5064902086769367
+    dataset_pref_score_mean: 0.9159687816364355
+    
+    === Final Averaged Metrics ===
+    task: RE36-Exact-v0
+    HV: 8.49804363964456 | HV20: 8.138992104564743
+    Spread: 0.6333722246284981
+    Spacing: 0.024047377949848653
+    PED: 0.29599780784792407
+    Pref max: 0.7588565321588314
+    Pref mean: 0.5592407837560731
+    dataset_pref_score_mean: 1.0
+    
+    === Final Averaged Metrics ===
+    task: RE61-Exact-v0
+    HV: 100.2117949993435 | HV20: 91.68634049536504
+    Spread: 0.5635921415090797
+    Spacing: 0.054710339987899655
+    PED: 0.7380727466566188
+    Pref max: 0.5615878273579628
+    Pref mean: 0.39701610521788977
+    dataset_pref_score_mean: 0.5610963577176951
+    
+    === Final Averaged Metrics ===
+    task: RE31-Exact-v0
+    HV: 10.606818067019573 | HV20: 10.621232780695964
+    Spread: 1.097073260633909
+    Spacing: 0.03245955528822184
+    PED: 0.9250599263817629
+    Pref max: 1.3688601975847328
+    Pref mean: 0.34014279540237546
+    dataset_pref_score_mean: 0.7569391049708611
+    
+    === Final Averaged Metrics ===
+    task: RE37-Exact-v0
+    HV: 5.867718791928265 | HV20: 5.9755870092138625
+    Spread: 0.4821638911868181
+    Spacing: 0.024690361958742153
+    PED: 0.3587521367763794
+    Pref max: 0.633889481993382
+    Pref mean: 0.45331730565951345
+    dataset_pref_score_mean: 0.7035372102856743
+    
+    === Final Averaged Metrics ===
+    task: RE25-Exact-v0
+    HV: 4.839861693219561 | HV20: 4.838920294922901
+    Spread: 1.2217033461763551
+    Spacing: 0.01158547645642342
+    PED: 0.0851151520836129
+    Pref max: 0.31633562528913617
+    Pref mean: 0.026741902265484202
+    dataset_pref_score_mean: 0.6187751212503968
+    
+    === Final Averaged Metrics ===
+    task: RE42-Exact-v0
+    HV: 16.877954181280547 | HV20: 17.427972564464824
+    Spread: 0.49464622092036353
+    Spacing: 0.03003029061241052
+    PED: 0.43651988032281025
+    Pref max: 0.7482865985043868
+    Pref mean: 0.47339906871639736
+    dataset_pref_score_mean: 0.8802365071502036
+    
+    === Final Averaged Metrics ===
+    task: RE36-Exact-v0
+    HV: 9.501142409802704 | HV20: 9.220844268259421
+    Spread: 0.7172989280235523
+    Spacing: 0.03487439600094841
+    PED: 0.460872407634532
+    Pref max: 0.8918780967177289
+    Pref mean: 0.49816252663992344
+    dataset_pref_score_mean: 1.0
+    
+    === Final Averaged Metrics ===
+    task: RE32-Exact-v0
+    HV: 10.646563857260123 | HV20: 10.645664447070526
+    Spread: 1.4914439363216545
+    Spacing: 0.022021615475185666
+    PED: 0.2537728122955813
+    Pref max: 0.7885290002392825
+    Pref mean: 0.07433215143098384
+    dataset_pref_score_mean: 0.6513536799732316
+    
+    === Final Averaged Metrics ===
+    task: RE41-Exact-v0
+    HV: 18.405731234051952 | HV20: 16.63266516562838
+    Spread: 0.48054616704493996
+    Spacing: 0.028301140096076483
+    PED: 0.2895356153801053
+    Pref max: 0.5716143367169648
+    Pref mean: 0.3024063657246165
+    dataset_pref_score_mean: 0.7855174303039876
+    
+    === Final Averaged Metrics ===
+    task: RE34-Exact-v0
+    HV: 9.194088182939582 | HV20: 9.370019548082182
+    Spread: 0.5872023245706096
+    Spacing: 0.028233967237333273
+    PED: 0.23302367422755327
+    Pref max: 0.5719226625432166
+    Pref mean: 0.3128686944043205
+    dataset_pref_score_mean: 0.7125753253376367
+    
+    === Final Averaged Metrics ===
+    task: RE61-Exact-v0
+    HV: 102.56616350023421 | HV20: 104.11120278876126
+    Spread: 0.5476629430042255
+    Spacing: 0.039922328391963
+    PED: 0.7721790393951916
+    Pref max: 0.5378224055699599
+    Pref mean: 0.2891689904271516
+    dataset_pref_score_mean: 0.5610963577176951
+    

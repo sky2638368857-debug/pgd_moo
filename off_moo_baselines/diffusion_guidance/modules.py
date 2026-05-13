@@ -184,7 +184,6 @@ class Model_unconditional(nn.Module):
         output = self.mlp(x + t)
         return output
 
-
 class Preference_model(nn.Module):
     """
     Preference model for learning pairwise preferences between designs.
@@ -385,19 +384,24 @@ class Preference_model_1(nn.Module):
         # ===== 2. 先加时间 =====
         h = self.mlp(em + t_emb)  # (B, 2, D)
 
-        # ===== 3. FiLM(w) =====
-        w = w.float()  # (B, w_dim)
+        w = w.float().to(x_1.device)
 
+        if w.dim() == 1:
+            w = w.unsqueeze(0)   # (1, w_dim)
+
+        if w.shape[0] == 1:
+            w = w.expand(x_1.shape[0], -1)   # (B, w_dim)
+
+        # ===== FiLM =====
         gamma_beta = self.w_embed(w)  # (B, 2D)
         gamma, beta = gamma_beta.chunk(2, dim=-1)
 
-        # —— 稳定技巧（非常重要）
         gamma = 1.0 + 0.1 * gamma
 
-        gamma = gamma.unsqueeze(1)  # (B, 1, D)
+        gamma = gamma.unsqueeze(1)  # (B,1,D)
         beta = beta.unsqueeze(1)
 
-        h = gamma * h + beta  # FiLM 调制
+        h = gamma * h + beta
 
         # ===== 4. 后续保持一致 =====
         output = self.out_1(self.preference(h + t_emb))
@@ -410,6 +414,119 @@ class Preference_model_1(nn.Module):
 
         return output
 
+class Preference_model_3(nn.Module):
+    """
+    Preference model for learning pairwise preferences between designs.
+
+    This model takes two noisy designs and a timestep, and predicts which
+    design is preferred. It's used for guided diffusion sampling.
+
+    Attributes:
+        device (str): Device to run the model on
+        input_dim (int): Input dimension
+        save_path (str): Path to save model checkpoints
+        three_dim_out (bool): Whether to output 3D tensor
+        mlp (nn.Sequential): Main neural network layers
+        time_embed (nn.Sequential): Time embedding layers
+        preference (nn.Sequential): Preference prediction layers
+        out_1 (nn.Linear): First output layer
+        out_2 (nn.Linear): Second output layer (if three_dim_out=True)
+    """
+
+    def __init__(
+        self, input_dim=256, device="cuda", save_path=None, three_dim_out=False
+    ):
+        """
+        Initialize the preference model.
+
+        Args:
+            input_dim (int): Input dimension (default: 256)
+            device (str): Device to run the model on (default: "cuda")
+            save_path (str): Path to save model checkpoints (default: None)
+            three_dim_out (bool): Whether to output 3D tensor (default: False)
+        """
+        super().__init__()
+        self.device = device
+        self.input_dim = input_dim
+        self.save_path = save_path
+        self.three_dim_out = three_dim_out
+        self.mlp = nn.Sequential(
+            nn.Linear(input_dim, input_dim),
+            nn.ReLU(),
+            nn.LayerNorm(input_dim),
+            nn.Linear(input_dim, input_dim),
+            nn.ReLU(),
+            nn.LayerNorm(input_dim),
+        )
+        self.time_embed = nn.Sequential(
+            nn.Linear(input_dim, input_dim),
+            nn.ReLU(),
+            nn.LayerNorm(input_dim),
+        )
+        self.preference = nn.Sequential(
+            nn.Linear(input_dim * 4, 512),  
+            nn.ReLU(),
+            nn.LayerNorm(512),
+            nn.Linear(512, 512),
+            nn.ReLU(),
+            nn.LayerNorm(512),
+        )
+        self.out_1 = nn.Linear(512, 1)
+        if self.three_dim_out:
+            self.out_2 = nn.Linear(512, 1)
+
+    def pos_encoding(self, t, dim):
+        """
+        Generate sinusoidal positional encoding for timesteps.
+
+        Args:
+            t (torch.Tensor): Timestep tensor of shape (batch_size, 1)
+            dim (int): Dimension of the positional encoding
+
+        Returns:
+            torch.Tensor: Positional encoding of shape (batch_size, dim)
+        """
+        half_dim = dim // 2
+        freq = torch.exp(
+            math.log(10000)
+            * (torch.arange(0, half_dim, device=self.device).float() / half_dim)
+        ).to(self.device)
+        pos_enc_a = torch.sin(t.repeat(1, half_dim) * freq.unsqueeze(0))
+        pos_enc_b = torch.cos(t.repeat(1, half_dim) * freq.unsqueeze(0))
+        pos_enc = torch.cat([pos_enc_a, pos_enc_b], dim=-1)
+        if dim % 2 == 1:
+            pos_enc = torch.cat([pos_enc, torch.zeros_like(pos_enc[:, :1])], dim=-1)
+        return pos_enc
+
+    def forward(self, x_1, x_2, t):
+        t = t.unsqueeze(-1).float()
+
+        # time embedding
+        t_emb = self.time_embed(self.pos_encoding(t, self.input_dim))
+
+        # base encoding
+        h1 = self.mlp(x_1 + t_emb)
+        h2 = self.mlp(x_2 + t_emb)
+
+        # --------- 关键：交互特征 ---------
+        diff = h1 - h2
+        prod = h1 * h2
+
+        # 拼接（interaction-aware representation）
+        h = torch.cat([h1, h2, diff, prod], dim=-1)
+
+        # 新的 preference 网络需要改 input_dim
+        h = self.preference(h)
+
+        s1 = self.out_1(h)
+        
+        if self.three_dim_out:
+            s2 = self.out_2(h)
+            output = torch.cat([s1, s2], dim=-1)
+        else:
+            output = s1
+
+        return output.squeeze(-1)
 # =============================================================================
 # Model Utility Functions
 # =============================================================================

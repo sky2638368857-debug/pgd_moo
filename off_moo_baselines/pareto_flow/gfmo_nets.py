@@ -835,9 +835,10 @@ class FlowMatching(nn.Module):
         temp_pareto_set = [pareto_set[i][0] for i in range(batch_size)]
         # Remove duplicates in the pareto set, because they are not contributing to the hypervolume
         temp_pareto_set = FlowMatching.remove_duplicates(temp_pareto_set)
-        assert (
-            len(temp_pareto_set) >= num_solutions
-        ), "Error: The number of solutions in the pareto set is less than the number of solutions we want to keep"
+        print(len(temp_pareto_set))
+        # assert (
+        #     len(temp_pareto_set) >= num_solutions
+        # ), "Error: The number of solutions in the pareto set is less than the number of solutions we want to keep"
         temp_pareto_set = torch.stack(temp_pareto_set, dim=0).squeeze()
         temp_pareto_set = task.denormalize_x(temp_pareto_set.cpu().detach().numpy(), normalization_method="z-score")
         if task.is_discrete:

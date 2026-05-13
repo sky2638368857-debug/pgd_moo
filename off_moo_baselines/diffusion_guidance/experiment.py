@@ -29,6 +29,7 @@ from off_moo_baselines.diffusion_guidance.ddpm_guidance import (
 from off_moo_baselines.diffusion_guidance.modules import (
     Preference_model,
     Preference_model_1,
+    Preference_model_3,
     Model_unconditional,
     save_model,
     load_model,
@@ -40,9 +41,9 @@ from off_moo_bench.evaluation.metrics import hv
 
 def run(config: dict):
 
-    # versions : V_0(original_edition)、 V_1(单引导、添加权重排序规则)、 V_2(双引导,增加偏好权重引导模块)
-    versions = "V_1"
-
+    # versions : V_0(original_edition)、 V_1(单引导、添加权重排序规则)、 V_2(双引导,增加偏好权重引导模块)、 V_3(原版+交互)
+    versions = config.get("version", "V_0")
+    print(f"Running version: {versions}")
 
     if config["task"] in ALLTASKSDICT.keys():
         config["task"] = ALLTASKSDICT[config["task"]]
@@ -137,13 +138,14 @@ def run(config: dict):
         preference_save_path = model_save_path.replace("-0.pt", "-preference_1.pt")
 
     elif versions == "V_2":
-        preference_save_path = model_save_path.replace("-0.pt", "-preference_2_1.pt")
-        preference_save_path_2 = model_save_path.replace("-0.pt", "-preference_2_2.pt")
-
-
+        preference_save_path = model_save_path.replace("-0.pt", "-preference.pt")
+        preference_save_path_2 = model_save_path.replace("-0.pt", "-preference_2.pt")
+    
+    elif versions == "V_3":
+        preference_save_path = model_save_path.replace("-0.pt", "-preference_3.pt")
 
         
-    if versions == "V_0":
+    if versions == "V_0" or versions == "V_3":
         (train_loader_pref, val_loader_pref, _, train_loader, _, _) = get_dataloader(
             X,
             y,
@@ -212,18 +214,18 @@ def run(config: dict):
             diversity_score_threshold=config["diversity_score_threshold"],
         )
 
-    if os.path.exists(model_save_path):
+    if os.path.exists(model_save_path) and None:
         model_uncond = Model_unconditional(dim=n_dim)
         load_model(model_uncond, model_save_path, device=tkwargs["device"])
         diffusion = Diffusion(img_size=n_dim, device=tkwargs["device"])
     else:
-        model_uncond, diffusion = train(train_loader)
+        model_uncond, diffusion = train(train_loader,model_save_path=model_save_path)
         save_model(
             model=model_uncond, save_path=model_save_path, device=model_uncond.device
         )
 
     if versions == "V_0":
-        if os.path.exists(preference_save_path):
+        if os.path.exists(preference_save_path): 
             preference_model = Preference_model(
                 input_dim=train_loader.dataset[0][0].shape[-1],
                 device=tkwargs["device"],
@@ -259,7 +261,8 @@ def run(config: dict):
                 w_dim = n_obj,
             )
     elif versions == "V_2":
-        if os.path.exists(preference_save_path):
+
+        if os.path.exists(preference_save_path) and None:
             preference_model = Preference_model(
                 input_dim=train_loader.dataset[0][0].shape[-1],
                 device=tkwargs["device"],
@@ -276,14 +279,14 @@ def run(config: dict):
                 three_dim_out=config["three_dim_out"],
             )
 
-        if os.path.exists(preference_save_path_2):
-            preference_model = Preference_model_1(
+        if os.path.exists(preference_save_path_2) and None:
+            Preference_model_2 = Preference_model_1(
                 input_dim=train_loader.dataset[0][0].shape[-1],
                 device=tkwargs["device"],
                 three_dim_out=config["three_dim_out"],
                 w_dim = n_obj,
             ).to(tkwargs["device"])
-            load_model(preference_model, preference_save_path_2, device=tkwargs["device"])
+            load_model(Preference_model_2, preference_save_path_2, device=tkwargs["device"])
         else:
             Preference_model_2 = train_preference_2(
                 dataloader=train_loader_pref_p2,
@@ -295,6 +298,24 @@ def run(config: dict):
                 w_dim = n_obj,
             )
 
+    elif versions == "V_3":
+        if os.path.exists(preference_save_path):
+            preference_model = Preference_model_3(
+                input_dim=train_loader.dataset[0][0].shape[-1],
+                device=tkwargs["device"],
+                three_dim_out=config["three_dim_out"],
+            ).to(tkwargs["device"])
+            load_model(preference_model, preference_save_path, device=tkwargs["device"])
+        else:
+            preference_model = train_preference(
+                dataloader=train_loader_pref,
+                diffusion=diffusion,
+                val_loader=val_loader_pref,
+                config=config,
+                model_save_path=preference_save_path,
+                three_dim_out=config["three_dim_out"],
+            )
+            
     X_d_best, d_best = task.get_N_non_dominated_solutions(
         N=256, return_x=True, return_y=True
     )
@@ -303,303 +324,238 @@ def run(config: dict):
     except NotImplementedError:
         res_y_pf_ideal = None
     X_d_best = torch.tensor(X_d_best[-1]).unsqueeze(0).repeat(256, 1)
-    if versions == "V_0":
-        samples = diffusion.sample_with_preference(
-            model_uncond,
-            256,
-            preference_model,
-            torch.tensor(X_d_best),
-            cfg_scale=10.0,
-            return_latents=False,
-            ddim=False,
-        )
-        samples_20 = diffusion.sample_with_preference(
-            model_uncond,
-            256,
-            preference_model,
-            torch.tensor(X_d_best),
-            cfg_scale=20.0,
-            return_latents=False,
-            ddim=False,
-        )
-    elif versions == "V_1":
-        w = torch.rand(n_obj)
-        print(f"Randomly initialized preference weight w: {w}")
-        samples = diffusion.sample_with_preference_1(
-            model_uncond,
-            256,
-            preference_model,
-            torch.tensor(X_d_best),
-            cfg_scale=10.0,
-            return_latents=False,
-            ddim=False,
-            w = w,
-        )
-        samples_20 = diffusion.sample_with_preference_1(
-            model_uncond,
-            256,
-            preference_model,
-            torch.tensor(X_d_best),
-            cfg_scale=20.0,
-            return_latents=False,
-            ddim=False,
-            w = w,
-        )
-    elif versions == "V_2":
-        w = torch.rand(n_obj)
-        print(f"Randomly initialized preference weight w: {w}")
-        samples = diffusion.sample_with_preference_2(
-            model_uncond,
-            256,
-            preference_model,
-            Preference_model_2,
-            torch.tensor(X_d_best),
-            cfg_scale=10.0,
-            return_latents=False,
-            ddim=False,
-            w = w,
-        )
-        samples_20 = diffusion.sample_with_preference_2(
-            model_uncond,
-            256,
-            preference_model,
-            Preference_model_2,
-            torch.tensor(X_d_best),
-            cfg_scale=20.0,
-            return_latents=False,
-            ddim=False,
-            w = w,
-        )
-    if config["normalize_xs"]:
-        task.map_denormalize_x()
-        samples = task.denormalize_x(samples.cpu().numpy())
-        samples_20 = task.denormalize_x(samples_20.cpu().numpy())
-        # latents = task.denormalize_x(latents.cpu().numpy())
-    else:
-        samples = samples.cpu().numpy()
-        samples_20 = samples_20.cpu().numpy()
-        # latents = latents.cpu().numpy()
-    res_y = task.predict(samples)
-    res_y_20 = task.predict(samples_20)
-    res_y_75_percentile = get_quantile_solutions(res_y, 0.75)
-    res_y_50_percentile = get_quantile_solutions(res_y, 0.5)
-    res_y_20_75_percentile = get_quantile_solutions(res_y_20, 0.75)
-    res_y_20_50_percentile = get_quantile_solutions(res_y_20, 0.5)
-    np.save(os.path.join(logging_dir, "res_y.npy"), res_y)
-    np.save(os.path.join(logging_dir, "res_x.npy"), samples)
-    np.save(os.path.join(logging_dir, "res_y_20.npy"), res_y_20)
-    np.save(os.path.join(logging_dir, "res_x_20.npy"), samples_20)
-    hv_value = hv(
-        task.normalize_y(task.nadir_point), task.normalize_y(res_y), config["task"]
-    )
-    if res_y_pf_ideal is not None:
-        hv_pf_ideal = hv(
-            task.normalize_y(task.nadir_point),
-            task.normalize_y(res_y_pf_ideal),
-            config["task"],
-        )
-    hv_d_best = hv(task.normalize_y(task.nadir_point), d_best, config["task"])
-    hv_value_75_percentile = hv(
-        task.normalize_y(task.nadir_point),
-        task.normalize_y(res_y_75_percentile),
-        config["task"],
-    )
-    hv_value_50_percentile = hv(
-        task.normalize_y(task.nadir_point),
-        task.normalize_y(res_y_50_percentile),
-        config["task"],
-    )
-    hv_value_20 = hv(
-        task.normalize_y(task.nadir_point), task.normalize_y(res_y_20), config["task"]
-    )
-    hv_value_20_75_percentile = hv(
-        task.normalize_y(task.nadir_point),
-        task.normalize_y(res_y_20_75_percentile),
-        config["task"],
-    )
-    hv_value_20_50_percentile = hv(
-        task.normalize_y(task.nadir_point),
-        task.normalize_y(res_y_20_50_percentile),
-        config["task"],
-    )
-    spread_value = spread(task.normalize_y(res_y))
-    spacing_value = spacing(task.normalize_y(res_y))
-    spread_value_50_percentile = spread(task.normalize_y(res_y_50_percentile))
-    spacing_value_50_percentile = spacing(task.normalize_y(res_y_50_percentile))
-    spread_value_75_percentile = spread(task.normalize_y(res_y_75_percentile))
-    spacing_value_75_percentile = spacing(task.normalize_y(res_y_75_percentile))
-    spread_value_20 = spread(task.normalize_y(res_y_20))
-    spacing_value_20 = spacing(task.normalize_y(res_y_20))
-    spread_value_20_50_percentile = spread(task.normalize_y(res_y_20_50_percentile))
-    spacing_value_20_50_percentile = spacing(task.normalize_y(res_y_20_50_percentile))
-    spread_value_20_75_percentile = spread(task.normalize_y(res_y_20_75_percentile))
-    spacing_value_20_75_percentile = spacing(task.normalize_y(res_y_20_75_percentile))
-    ped_20 = pairwise_euclidean_distances(task.normalize_y(res_y_20))
-    ped_20_75 = pairwise_euclidean_distances(task.normalize_y(res_y_20_75_percentile))
-    ped_20_50 = pairwise_euclidean_distances(task.normalize_y(res_y_20_50_percentile))
-    ped = pairwise_euclidean_distances(task.normalize_y(res_y))
-    ped_75 = pairwise_euclidean_distances(task.normalize_y(res_y_75_percentile))
-    ped_50 = pairwise_euclidean_distances(task.normalize_y(res_y_50_percentile))
-
-    print(f"HV value {hv_value} HV D best {hv_d_best}")
 
     # =========================
-    # Preference-weighted metrics
+    # Dirichlet multi-w evaluation (FULL VERSION)
     # =========================
+
+    def sample_dirichlet_w(n_obj, alpha=1.0):
+        return np.random.dirichlet(alpha * np.ones(n_obj))
 
     def compute_weighted_scores(y, w):
-        # y: (N, m), w: (m,)
+        if isinstance(w, torch.Tensor):
+            w = w.detach().cpu().numpy()
         return (y * w).sum(axis=1)
 
+    num_w_samples = config.get("num_w_samples", 1)
 
-    # ---- 统一使用 normalize 后的数据 ----
-    res_y_norm = task.normalize_y(res_y)
-    res_y_75_norm = task.normalize_y(res_y_75_percentile)
-    res_y_50_norm = task.normalize_y(res_y_50_percentile)
+    print("===============================================")
+    print(f"Running FULL multi-w evaluation, num_w_samples = {num_w_samples}")
 
-    res_y_20_norm = task.normalize_y(res_y_20)
-    res_y_20_75_norm = task.normalize_y(res_y_20_75_percentile)
-    res_y_20_50_norm = task.normalize_y(res_y_20_50_percentile)
-
-
-    # ---- 主结果 ----
-    weighted_scores = compute_weighted_scores(res_y_norm, w)
-    max_weighted = weighted_scores.max()
-    mean_weighted = weighted_scores.mean()
+    hv_list, hv20_list = [], []
+    spread_list, spread20_list = [], []
+    spacing_list, spacing20_list = [], []
+    ped_list, ped20_list = [], []
+    dataset_pref_scores = []
+    all_max_weighted, all_mean_weighted = [], []
 
 
-    # ---- 75% ----
-    weighted_scores_75 = compute_weighted_scores(res_y_75_norm, w)
-    max_weighted_75 = weighted_scores_75.max()
-    mean_weighted_75 = weighted_scores_75.mean()
+    if versions == "V_0" or versions == "V_3":
+
+        samples = diffusion.sample_with_preference(
+            model_uncond, 256, preference_model,
+            torch.tensor(X_d_best),
+            cfg_scale=10.0, return_latents=False, ddim=False
+        )
+
+        samples_20 = diffusion.sample_with_preference(
+            model_uncond, 256, preference_model,
+            torch.tensor(X_d_best),
+            cfg_scale=20.0, return_latents=False, ddim=False
+        )
+
+        if config["normalize_xs"]:
+            task.map_denormalize_x()
+            samples = task.denormalize_x(samples.cpu().numpy())
+            samples_20 = task.denormalize_x(samples_20.cpu().numpy())
+        else:
+            samples = samples.cpu().numpy()
+            samples_20 = samples_20.cpu().numpy()
+
+        res_y = task.predict(samples)
+        res_y_20 = task.predict(samples_20)
+
+        res_y_norm = task.normalize_y(res_y)
+        res_y_20_norm = task.normalize_y(res_y_20)
+
+        # ===== 所有非偏好指标只算一次 =====
+        hv_list.append(hv(task.normalize_y(task.nadir_point), res_y_norm, config["task"]))
+        hv20_list.append(hv(task.normalize_y(task.nadir_point), res_y_20_norm, config["task"]))
+
+        spread_list.append(spread(res_y_norm))
+        spread20_list.append(spread(res_y_20_norm))
+
+        spacing_list.append(spacing(res_y_norm))
+        spacing20_list.append(spacing(res_y_20_norm))
+
+        ped_list.append(pairwise_euclidean_distances(res_y_norm))
+        ped20_list.append(pairwise_euclidean_distances(res_y_20_norm))
 
 
-    # ---- 50% ----
-    weighted_scores_50 = compute_weighted_scores(res_y_50_norm, w)
-    max_weighted_50 = weighted_scores_50.max()
-    mean_weighted_50 = weighted_scores_50.mean()
+        for _ in range(num_w_samples):
+            w = sample_dirichlet_w(n_obj)
+            print(f"[Sample {_}] w = {w}")
+            dataset_scores = compute_weighted_scores(y, w)
+            dataset_pref_scores.append(dataset_scores.max())
+            weighted_scores = compute_weighted_scores(res_y_norm, w)
+            all_max_weighted.append(weighted_scores.max())
+            all_mean_weighted.append(weighted_scores.mean())
+    else:
+        for i in range(num_w_samples):
+            w = sample_dirichlet_w(n_obj)
+            w_tensor = torch.tensor(w, dtype=torch.float32).to(tkwargs["device"])
 
+            print(f"[Sample {i}] w = {w_tensor}")
 
-    # ---- res_y_20 ----
-    weighted_scores_20 = compute_weighted_scores(res_y_20_norm, w)
-    max_weighted_20 = weighted_scores_20.max()
-    mean_weighted_20 = weighted_scores_20.mean()
+            if versions == "V_1":
+                samples = diffusion.sample_with_preference_1(
+                    model_uncond, 256, preference_model,
+                    torch.tensor(X_d_best),
+                    cfg_scale=10.0, return_latents=False, ddim=False, w=w_tensor
+                )
 
+                samples_20 = diffusion.sample_with_preference_1(
+                    model_uncond, 256, preference_model,
+                    torch.tensor(X_d_best),
+                    cfg_scale=20.0, return_latents=False, ddim=False, w=w_tensor
+                )
 
-    # ---- res_y_20 + percentile ----
-    weighted_scores_20_75 = compute_weighted_scores(res_y_20_75_norm, w)
-    max_weighted_20_75 = weighted_scores_20_75.max()
-    mean_weighted_20_75 = weighted_scores_20_75.mean()
+            elif versions == "V_2":
+                samples = diffusion.sample_with_preference_2(
+                    model_uncond, 256, preference_model, Preference_model_2,
+                    torch.tensor(X_d_best),
+                    cfg_scale=1, cfg_scale_p=2,return_latents=False, ddim=False, w=w_tensor
+                )
 
-    weighted_scores_20_50 = compute_weighted_scores(res_y_20_50_norm, w)
-    max_weighted_20_50 = weighted_scores_20_50.max()
-    mean_weighted_20_50 = weighted_scores_20_50.mean()
+                samples_20 = diffusion.sample_with_preference_2(
+                    model_uncond, 256, preference_model, Preference_model_2,
+                    torch.tensor(X_d_best),
+                    cfg_scale=2, cfg_scale_p=4,return_latents=False, ddim=False, w=w_tensor
+                )
+                
+                # samples = diffusion.sample_with_preference_3(
+                #     model_uncond, 256, n_obj,preference_model, Preference_model_2,
+                #     torch.tensor(X_d_best),
+                #     cfg_scale=10.0, cfg_scale_p=10000,return_latents=False, ddim=False
+                # )
 
+                # samples_20 = diffusion.sample_with_preference_3(
+                #     model_uncond, 256, n_obj, preference_model, Preference_model_2,
+                #     torch.tensor(X_d_best),
+                #     cfg_scale=20.0, cfg_scale_p=20000,return_latents=False, ddim=False
+                # )
 
-    print("=== Preference Metrics ===")
-    print("max_weighted:", max_weighted)
-    print("mean_weighted:", mean_weighted)
+            if config["normalize_xs"]:
+                task.map_denormalize_x()
+                samples = task.denormalize_x(samples.cpu().numpy())
+                samples_20 = task.denormalize_x(samples_20.cpu().numpy())
+            else:
+                samples = samples.cpu().numpy()
+                samples_20 = samples_20.cpu().numpy()
 
+            res_y = task.predict(samples)
+            res_y_20 = task.predict(samples_20)
 
+            res_y_norm = task.normalize_y(res_y)
+            res_y_20_norm = task.normalize_y(res_y_20)
 
-hv_results = {
+            # ===== 所有指标都 multi-w =====
+            hv_list.append(hv(task.normalize_y(task.nadir_point), res_y_norm, config["task"]))
+            hv20_list.append(hv(task.normalize_y(task.nadir_point), res_y_20_norm, config["task"]))
 
-    # ===== 原有 HV =====
+            spread_list.append(spread(res_y_norm))
+            spread20_list.append(spread(res_y_20_norm))
 
-    "hypervolume_10/D(best)": hv_d_best,
+            spacing_list.append(spacing(res_y_norm))
+            spacing20_list.append(spacing(res_y_20_norm))
 
-    "hypervolume_10/100th": hv_value,
+            ped_list.append(pairwise_euclidean_distances(res_y_norm))
+            ped20_list.append(pairwise_euclidean_distances(res_y_20_norm))
 
-    "hypervolume_10/75th": hv_value_75_percentile,
+            weighted_scores = compute_weighted_scores(res_y_norm, w)
 
-    "hypervolume_10/50th": hv_value_50_percentile,
-
-    "hypervolume_20/100th": hv_value_20,
-
-    "hypervolume_20/75th": hv_value_20_75_percentile,
-
-    "hypervolume_20/50th": hv_value_20_50_percentile,
-
-    # ===== Diversity =====
-
-    "Spread_10/100th": spread_value,
-
-    "Spacing_10/100th": spacing_value,
-
-    "Spread_10/75th": spread_value_75_percentile,
-
-    "Spacing_10/75th": spacing_value_75_percentile,
-
-    "Spread_20/100th": spread_value_20,
-
-    "Spacing_20/100th": spacing_value_20,
-
-    "Spread_20/75th": spread_value_20_75_percentile,
-
-    "Spacing_20/75th": spacing_value_20_75_percentile,
-
-    "Spread_20/50th": spread_value_20_50_percentile,
-
-    "Spacing_20/50th": spacing_value_20_50_percentile,
-
-    "Spread_10/50th": spread_value_50_percentile,
-
-    "Spacing_10/50th": spacing_value_50_percentile,
-
-    # ===== PED =====
-
-    "ped_10/100th": ped,
-
-    "ped_10/75th": ped_75,
-
-    "ped_10/50th": ped_50,
-
-    "ped_20/100th": ped_20,
-
-    "ped_20/75th": ped_20_75,
-
-    "ped_20/50th": ped_20_50,
+            all_max_weighted.append(weighted_scores.max())
+            all_mean_weighted.append(weighted_scores.mean())
+            
+            
+            dataset_scores = compute_weighted_scores(y, w)
+            dataset_pref_scores.append(dataset_scores.max())
 
     # =========================
-
-    # ✅ 新增：Preference metrics
-
+    # FINAL aggregation
     # =========================
+    final_hv = np.mean(hv_list)
+    final_hv20 = np.mean(hv20_list)
 
+    final_spread = np.mean(spread_list)
+    final_spread20 = np.mean(spread20_list)
 
-    "weighted_10/max": max_w,
+    final_spacing = np.mean(spacing_list)
+    final_spacing20 = np.mean(spacing20_list)
 
-    "weighted_10/mean": mean_w,
+    final_ped = np.mean(ped_list)
+    final_ped20 = np.mean(ped20_list)
 
-    "weighted_10/75th_max": max_w_75,
+    final_max = np.mean(all_max_weighted)
+    final_mean = np.mean(all_mean_weighted)
 
-    "weighted_10/75th_mean": mean_w_75,
+    dataset_pref_score_mean = np.mean(dataset_pref_scores)
 
-    "weighted_10/50th_max": max_w_50,
+    result_str = f"""
+    === Final Averaged Metrics ===
+    task: {config['task']}
+    HV: {final_hv} | HV20: {final_hv20}
+    Spread: {final_spread}
+    Spacing: {final_spacing}
+    PED: {final_ped}
+    Pref max: {final_max}
+    Pref mean: {final_mean}
+    dataset_pref_score_mean: {dataset_pref_score_mean}
+    """
 
-    "weighted_10/50th_mean": mean_w_50,
+    print(result_str)
 
-    "weighted_20/max": max_w_20,
+    with open("./result_temp_v0.txt", "a") as f:
+        f.write(result_str)
 
-    "weighted_20/mean": mean_w_20,
+    def count_invalid_samples(samples):
+        samples = np.array(samples)  # 转成 numpy
+        lower = 0.0
+        upper = 1.0
+        
+        invalid_mask = (samples < lower) | (samples > upper)
+        invalid_count = np.sum(invalid_mask)
+        invalid_rows = np.sum(np.any(invalid_mask, axis=1))
+        
+        return invalid_count, invalid_rows
+    
+    # invalid_count, invalid_rows = count_invalid_samples(samples)
 
-    "weighted_20/75th_max": max_w_20_75,
+    # print(f"元素级别不合法数量: {invalid_count}")
+    # print(f"行级别至少有一个元素不合法的样本数量: {invalid_rows}")
+    # # =========================
+    # 写入结果
+    # =========================
+    hv_results = {
+        "hypervolume_10/avg": final_hv,
+        "hypervolume_20/avg": final_hv20,
+        "Spread_10/avg": final_spread,
+        "Spread_20/avg": final_spread20,
+        "Spacing_10/avg": final_spacing,
+        "Spacing_20/avg": final_spacing20,
+        "ped_10/avg": final_ped,
+        "ped_20/avg": final_ped20,
+        "weighted_10/max_avg": final_max,
+        "weighted_10/mean_avg": final_mean,
+        "num_w_samples": num_w_samples,
+        "dataset_pref_score_mean:": dataset_pref_score_mean,
+    }
+    
+    df = pd.DataFrame([hv_results])
 
-    "weighted_20/75th_mean": mean_w_20_75,
+    filename = os.path.join(logging_dir, "hv_results.csv")
 
-    "weighted_20/50th_max": max_w_20_50,
-
-    "weighted_20/50th_mean": mean_w_20_50,
-
-    "evaluation_step": 1,
-
-}
-
-df = pd.DataFrame([hv_results])
-
-filename = os.path.join(logging_dir, "hv_results.csv")
-
-df.to_csv(filename, index=False)
+    df.to_csv(filename, index=False)
 
 if __name__ == "__main__":
     from utils import process_args

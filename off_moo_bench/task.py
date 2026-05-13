@@ -525,7 +525,6 @@ class Task(object):
             has been normalized using dataset statistics
 
         """
-
         return self.dataset.normalize_y(y, normalization_method=normalization_method)
 
     def denormalize_x(self, x, normalization_method=None):
